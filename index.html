@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 18 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 19 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -91,6 +91,9 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
 <div class="linkrow" id="callRow" hidden>
   <button type="button" class="linkbtn on" id="callBtn">Call</button>
 </div>
+<div class="linkrow" id="miniRow" hidden>
+  <div class="tm"><span id="miniName">Music</span><button type="button" id="mPrev">Prev</button><button type="button" id="mPlay">Pause</button><button type="button" id="mNext">Next</button></div>
+</div>
 <div class="linkrow" id="timers"></div>
 <div class="linkrow" id="calRow" hidden>
   <button type="button" class="linkbtn on" id="calIcs">Add to phone calendar</button>
@@ -123,10 +126,25 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <button type="button" class="linkbtn" id="hands">Hands-free: Off</button>
   <button type="button" class="linkbtn" id="auto">Auto-send: Off</button>
   <button type="button" class="linkbtn" id="locBtn">Location: Off</button>
+  <button type="button" class="linkbtn" id="musBtn">Music</button>
+  <button type="button" class="linkbtn" id="ringBtn">Ring theme</button>
   <button type="button" class="linkbtn" id="memBtn">Memory</button>
   <button type="button" class="linkbtn" id="histBtn">History</button>
   <button type="button" class="linkbtn" id="setBtn">Settings</button>
   <button type="button" class="linkbtn" id="tuneBtn">Change voice</button>
+</div>
+<div class="tune" id="ringP" hidden>
+  <div class="row" id="ringOpts">
+    <button type="button" data-r="blue">Blue</button><button type="button" data-r="red">Red</button><button type="button" data-r="gold">Gold</button><button type="button" data-r="green">Green</button>
+    <button type="button" data-r="purple">Purple</button><button type="button" data-r="ice">Ice</button>
+  </div>
+</div>
+<div class="tune" id="musP" hidden>
+  <div class="hint">Play songs saved on your phone. Choose them once each time you open Jarvis (Chrome does not let a web app keep your files). Then say "play music", "pause", "next song", "volume up", or "play" and a song name. Music goes quiet while Jarvis listens or talks.</div>
+  <input type="file" id="musFile" accept="audio/*" multiple hidden>
+  <button type="button" class="go" id="musPick">Choose songs</button>
+  <div class="row"><button type="button" id="musShuf">Shuffle: Off</button><button type="button" id="musVD">Volume -</button><button type="button" id="musVU">Volume +</button><button type="button" id="musStop">Stop</button></div>
+  <div class="lst" id="musList"></div>
 </div>
 <div class="tune" id="memP" hidden>
   <div class="hint">What Jarvis remembers about you. It is saved only on this phone. Tell Jarvis "remember that..." or "forget...", or remove items here.</div>
@@ -170,7 +188,7 @@ const say = $("say"), msg = $("msg"), note = $("note");
 let state = "idle", level = 0, history = [], voiceOn = true, busy = false, ctrl = null;
 
 const LABEL = { idle: "standing by", listening: "listening", thinking: "thinking", speaking: "speaking" };
-function setState(s) { state = s; document.body.dataset.state = s; $("statusText").textContent = LABEL[s]; }
+function setState(s) { state = s; document.body.dataset.state = s; $("statusText").textContent = LABEL[s]; try { applyVol(); } catch (e) {} }
 setState("idle");
 
 /* ---------- Orb ---------- */
@@ -183,7 +201,16 @@ function fit() {
 new ResizeObserver(fit).observe(cv); fit();
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const TAU = Math.PI * 2;
-const BL = (a) => `rgba(30,150,255,${a})`, CY = (a) => `rgba(110,215,255,${a})`, WH = (a) => `rgba(225,245,255,${a})`;
+const THEMES = {
+  blue:   { bl: [30, 150, 255], cy: [110, 215, 255], wh: [225, 245, 255], ember: "#4fb8ff", glow: "#a9e4ff", disc: "4,24,56" },
+  red:    { bl: [255, 60, 60],  cy: [255, 150, 130], wh: [255, 235, 230], ember: "#ff5c5c", glow: "#ffb3a6", disc: "56,10,10" },
+  gold:   { bl: [255, 170, 30], cy: [255, 215, 110], wh: [255, 246, 220], ember: "#ffb52e", glow: "#ffe1a0", disc: "50,32,6" },
+  green:  { bl: [40, 220, 120], cy: [140, 255, 190], wh: [230, 255, 240], ember: "#3be08a", glow: "#a8ffd0", disc: "6,48,26" },
+  purple: { bl: [150, 90, 255], cy: [200, 160, 255], wh: [240, 232, 255], ember: "#a77bff", glow: "#d9c2ff", disc: "26,10,56" },
+  ice:    { bl: [150, 190, 220], cy: [225, 240, 250], wh: [255, 255, 255], ember: "#cfe6f7", glow: "#ffffff", disc: "18,30,44" }
+};
+let TH = THEMES.blue;
+const BL = (a) => `rgba(${TH.bl},${a})`, CY = (a) => `rgba(${TH.cy},${a})`, WH = (a) => `rgba(${TH.wh},${a})`;
 function glowArc(mx, my, r, a0, a1, w, col, blur) {
   cx.beginPath(); cx.arc(mx, my, r, a0, a1); cx.strokeStyle = col;
   if (blur > 6) { cx.globalAlpha = 0.22; cx.lineWidth = w + blur * 0.45; cx.stroke(); cx.globalAlpha = 1; }
@@ -254,7 +281,7 @@ function frame(now) {
   // dark centre disc with a faint voice waveform
   const rin = R * 0.455;
   const disc = cx.createRadialGradient(mx, my, 0, mx, my, rin);
-  disc.addColorStop(0, "rgba(2,10,24,0.97)"); disc.addColorStop(1, "rgba(4,24,56,0.97)");
+  disc.addColorStop(0, "rgba(2,10,24,0.97)"); disc.addColorStop(1, "rgba(" + TH.disc + ",0.97)");
   cx.beginPath(); cx.arc(mx, my, rin, 0, TAU); cx.fillStyle = disc; cx.fill();
   cx.beginPath();
   for (let i = 0; i <= 120; i++) {
@@ -713,7 +740,7 @@ function paintMem() {
     row.append(sp, b); box.appendChild(row);
   });
 }
-$("memBtn").onclick = () => { $("memP").hidden = !$("memP").hidden; $("hist").hidden = true; paintMem(); };
+$("memBtn").onclick = () => { $("memP").hidden = !$("memP").hidden; $("hist").hidden = true; $("musP").hidden = true; $("ringP").hidden = true; paintMem(); };
 $("memClear").onclick = () => { setMem([]); note.textContent = "Memory cleared."; };
 paintMem();
 
@@ -818,15 +845,91 @@ function paintHist() {
     row.append(sp, b); box.appendChild(row);
   });
 }
-$("histBtn").onclick = () => { $("hist").hidden = !$("hist").hidden; $("memP").hidden = true; paintHist(); };
+$("histBtn").onclick = () => { $("hist").hidden = !$("hist").hidden; $("memP").hidden = true; $("musP").hidden = true; $("ringP").hidden = true; paintHist(); };
 $("newChat").onclick = () => { try { speechSynthesis.cancel(); } catch (e) {} history = []; curChat = null; say.innerHTML = ""; const d = document.createElement("div"); d.className = "jarvis"; d.textContent = "New chat. What can I do for you?"; say.appendChild(d); $("hist").hidden = true; setState("idle"); note.textContent = ""; };
 $("histClear").onclick = () => { ls.set("chats", "[]"); curChat = null; paintHist(); note.textContent = "Saved chats deleted."; };
 paintHist();
+
+/* ---------- Ring theme ---------- */
+function setRing(name, say_) {
+  if (!THEMES[name]) name = "blue";
+  TH = THEMES[name]; ls.set("ring", name);
+  document.documentElement.style.setProperty("--ember", TH.ember); document.documentElement.style.setProperty("--glow", TH.glow);
+  document.querySelectorAll("#ringOpts button").forEach((b) => b.classList.toggle("on", b.dataset.r === name));
+  if (say_) note.textContent = "Ring theme: " + name + ".";
+}
+$("ringOpts").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setRing(b.dataset.r, true); });
+$("ringBtn").onclick = () => { $("ringP").hidden = !$("ringP").hidden; $("musP").hidden = true; $("memP").hidden = true; $("hist").hidden = true; };
+setRing(ls.get("ring", "blue"), false);
+
+/* ---------- Music from this phone ---------- */
+const player = new Audio(); player.preload = "auto";
+let tracks = [], tIdx = -1, userVol = 0.8, shuffle = false;
+function applyVol() { player.volume = Math.max(0, Math.min(1, userVol * (state === "listening" ? 0 : state === "speaking" || state === "thinking" ? 0.15 : 1))); }
+const trackName = (f) => f.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
+function paintMusic() {
+  const box = $("musList"); box.innerHTML = "";
+  if (!tracks.length) { const d = document.createElement("div"); d.className = "empty"; d.textContent = "No songs chosen yet."; box.appendChild(d); }
+  tracks.forEach((t, i) => {
+    const row = document.createElement("div"); row.className = "it";
+    const sp = document.createElement("span"); sp.style.cursor = "pointer"; sp.textContent = (i === tIdx ? "▶ " : "") + t.name; sp.onclick = () => playTrack(i); row.appendChild(sp); box.appendChild(row);
+  });
+  $("miniRow").hidden = !(tracks.length && tIdx >= 0);
+  $("miniName").textContent = tIdx >= 0 && tracks[tIdx] ? tracks[tIdx].name.slice(0, 28) : "Music";
+  $("mPlay").textContent = player.paused ? "Play" : "Pause";
+  $("musShuf").textContent = "Shuffle: " + (shuffle ? "On" : "Off");
+}
+function playTrack(i) {
+  if (!tracks.length) return false;
+  tIdx = (i + tracks.length) % tracks.length; player.src = tracks[tIdx].url; applyVol();
+  player.play().catch(() => { note.textContent = "Tap Play to start the music."; }); paintMusic(); return true;
+}
+const nextIdx = (d) => shuffle && tracks.length > 1 ? (tIdx + 1 + Math.floor(Math.random() * (tracks.length - 1))) % tracks.length : tIdx + d;
+player.onended = () => playTrack(nextIdx(1));
+player.onplay = player.onpause = () => paintMusic();
+$("musBtn").onclick = () => { $("musP").hidden = !$("musP").hidden; $("ringP").hidden = true; $("memP").hidden = true; $("hist").hidden = true; paintMusic(); };
+$("musPick").onclick = () => $("musFile").click();
+$("musFile").onchange = (e) => {
+  const fs = [...e.target.files].filter((f) => /^audio\//.test(f.type) || /\.(mp3|m4a|aac|wav|ogg|opus|flac)$/i.test(f.name));
+  if (!fs.length) { note.textContent = "Those were not music files."; return; }
+  tracks.forEach((t) => URL.revokeObjectURL(t.url)); tracks = fs.map((f) => ({ name: trackName(f), url: URL.createObjectURL(f) }));
+  playTrack(0); note.textContent = tracks.length + " song" + (tracks.length > 1 ? "s" : "") + " ready.";
+};
+$("mPlay").onclick = () => { if (!tracks.length) return; if (player.paused) player.play().catch(() => {}); else player.pause(); };
+$("mNext").onclick = () => playTrack(nextIdx(1)); $("mPrev").onclick = () => playTrack(tIdx - 1);
+$("musShuf").onclick = () => { shuffle = !shuffle; paintMusic(); };
+$("musVU").onclick = () => { userVol = Math.min(1, userVol + 0.15); applyVol(); }; $("musVD").onclick = () => { userVol = Math.max(0.05, userVol - 0.15); applyVol(); };
+$("musStop").onclick = () => { player.pause(); player.removeAttribute("src"); tIdx = -1; paintMusic(); };
+/* Voice commands for the player and ring themes are handled here, before anything is sent to the AI. Returns the spoken reply or null. */
+function localCommand(t) {
+  const x = t.toLowerCase().replace(/[.!?,]/g, "").trim();
+  const need = "I have no songs yet. Tap Music, then Choose songs.";
+  let m;
+  if (/^(play|start|resume|put on)( some| my| the)? (music|songs?)$/.test(x) || x === "resume music") { if (!tracks.length) return need; if (tIdx < 0) playTrack(0); else player.play().catch(() => {}); return "Playing."; }
+  if (/^(pause|stop|mute)( the| my)?( music| song| songs| playing)?$/.test(x) || /^stop the (music|song)$/.test(x)) { if (!tracks.length || player.paused) return null; player.pause(); return "Paused."; }
+  if (/^(next|skip)( the)?( song| track)?$/.test(x)) { if (!tracks.length) return need; playTrack(nextIdx(1)); return "Next song."; }
+  if (/^(previous|last|go back)( the)?( song| track)?$/.test(x)) { if (!tracks.length) return need; playTrack(tIdx - 1); return "Previous song."; }
+  if (/^(turn )?(the )?(music |volume )?(up|louder)( the (music|volume))?$|^volume up$|^louder$/.test(x)) { userVol = Math.min(1, userVol + 0.2); applyVol(); return "Louder."; }
+  if (/^(turn )?(the )?(music |volume )?(down|quieter|lower)( the (music|volume))?$|^volume down$|^quieter$/.test(x)) { userVol = Math.max(0.05, userVol - 0.2); applyVol(); return "Quieter."; }
+  if (/^shuffle( on| the music)?$/.test(x)) { shuffle = true; paintMusic(); return "Shuffle is on."; }
+  if ((m = /^(?:change |set |make )?(?:the )?(?:ring|rings|theme|ring theme|colou?r)(?: theme)?(?: to)? ?(blue|red|gold|golden|yellow|green|purple|violet|ice|white)$/.exec(x)) || (m = /^(?:change|set|make)(?: the)? (?:ring|rings|theme|ring theme|colou?r)(?: theme)? to (blue|red|gold|golden|yellow|green|purple|violet|ice|white)$/.exec(x))) {
+    const map = { golden: "gold", yellow: "gold", violet: "purple", white: "ice" }, n = map[m[1]] || m[1]; setRing(n, false); return "Ring theme changed to " + n + ".";
+  }
+  if (tracks.length && (m = /^play (.{2,60})$/.exec(x)) && !/^(music|songs?|some music|my music)$/.test(m[1])) {
+    const words = m[1].replace(/^(the )?(song|track)\s+/, "").split(/\s+/);
+    const i = tracks.findIndex((t) => words.every((w) => t.name.toLowerCase().includes(w)));
+    if (i >= 0) { playTrack(i); return "Playing " + tracks[i].name + "."; }
+  }
+  return null;
+}
+paintMusic();
 const visible = (t) => String(t || "").replace(/\[\[[\s\S]*$/, "").trim();
 let lastReply = "";
 async function ask(text) {
   text = text.trim(); if (!text || busy) return;
   if (!sample) { note.textContent = "Claude is not available in this view."; return; }
+  const lc = localCommand(text);
+  if (lc) { msg.value = ""; try { speechSynthesis.cancel(); } catch (e) {} show(text, lc); lastReply = lc; setState("idle"); speak(lc); return; }
   busy = true; try { speechSynthesis.cancel(); } catch (e) {}
   msg.value = ""; setState("thinking"); note.textContent = ""; $("calRow").hidden = true; lastEvent = null; $("callRow").hidden = true; lastCall = null; $("openRow").hidden = true; lastOpen = null;
   const out = show(text, "…");
