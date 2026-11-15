@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 20 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 21 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -924,6 +924,13 @@ function localCommand(t) {
     const words = m[1].replace(/^(the )?(song|track)\s+/, "").split(/\s+/);
     const i = tracks.findIndex((t) => words.every((w) => t.name.toLowerCase().includes(w)));
     if (i >= 0) { playTrack(i); return "Playing " + tracks[i].name + "."; }
+  }
+  /* "play Another Love" (not on this phone): get YouTube or Spotify ready, one tap to open */
+  if ((m = /^(?:please )?play (?:the )?(?:song |track |video )?(.{2,70}?)(?: on (youtube|spotify|youtube music))?$/.exec(x)) && !/^(music|songs?|some music|my music|it|again|something)$/.test(m[1])) {
+    const app = m[2] === "spotify" ? "spotify" : "youtube", q = m[1].trim();
+    $("calRow").hidden = true; lastEvent = null; $("callRow").hidden = true; lastCall = null;
+    lastOpen = { app, query: q }; $("openRow").hidden = false; $("openBtn").textContent = "Open " + APPS[app].name + ": " + q;
+    return "Getting " + q + " ready. Tap the Open " + APPS[app].name + " button.";
   }
   return null;
 }
