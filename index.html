@@ -1,0 +1,672 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 16 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
+:root {
+  --bg: #02060f;
+  --panel: #07111f;
+  --line: #1b3249;
+  --fg: #e6f3ff;
+  --dim: #7f9bb3;
+  --ember: #4fb8ff;
+  --glow: #a9e4ff;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 8px;
+}
+header { display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+header b { font-family: var(--font-display); font-size: 15px; letter-spacing: .3em; color: var(--fg); font-weight: 600; }
+#status { display: flex; align-items: center; gap: 8px; }
+#status i { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+body[data-state="listening"] #status i { background: #5ee08a; box-shadow: 0 0 10px #5ee08a; }
+body[data-state="thinking"] #status i { background: var(--glow); animation: blink .6s infinite alternate; }
+body[data-state="speaking"] #status i { background: var(--ember); box-shadow: 0 0 10px var(--ember); }
+@keyframes blink { to { opacity: .25; } }
+.stage { flex: 1 1 0; min-height: 180px; position: relative; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.say { min-height: 5.5em; max-height: 28vh; overflow-y: auto; text-align: center; display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 0 4px; }
+.say .you { font-family: var(--font-mono); font-size: 12px; color: var(--dim); max-width: 60ch; overflow-wrap: anywhere; }
+.say .jarvis { font-family: var(--font-display); font-size: clamp(17px, 2.6vw, 22px); line-height: 1.4; max-width: 56ch; text-wrap: balance; overflow-wrap: anywhere; }
+.bar { display: flex; gap: 8px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 6px 6px 18px; max-width: 720px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.bar input { flex: 1; min-width: 0; background: none; border: 0; color: var(--fg); font: inherit; font-size: 15px; outline: none; }
+.bar input::placeholder { color: var(--dim); }
+button { font: inherit; cursor: pointer; border: 0; border-radius: 999px; height: 40px; min-width: 40px; padding: 0 14px; background: var(--line); color: var(--fg); }
+button:hover { background: #28496a; }
+button:focus-visible, .bar:focus-within { outline: 2px solid var(--glow); outline-offset: 2px; }
+button.go { background: var(--ember); color: #04121f; font-weight: 600; }
+button.go:hover { background: var(--glow); }
+button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chips button { height: 30px; font-size: 12px; background: transparent; border: 1px solid var(--line); color: var(--dim); }
+.chips button:hover { color: var(--fg); border-color: var(--ember); background: transparent; }
+.note { text-align: center; font-size: 12px; color: var(--dim); min-height: 1.2em; }
+.tune { max-width: 720px; width: 100%; margin: 0 auto; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+.tune[hidden] { display: none; }
+.tune label { font-size: 12px; color: var(--dim); display: flex; flex-direction: column; gap: 6px; }
+.tune select { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 15px; }
+.tune input[type=range] { width: 100%; accent-color: var(--ember); }
+.tune .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.tune .row button.on { background: var(--ember); color: #04121f; font-weight: 600; }
+.tune .row button { min-width: 0; height: 40px; padding: 0 4px; border-radius: 999px; font-size: 12.5px; text-align: center; white-space: nowrap; }
+.linkrow { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.linkbtn.on { background: var(--ember); color: #04121f; border-color: var(--ember); font-weight: 600; }
+.tune input[type=password] { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 15px; width: 100%; box-sizing: border-box; }
+.tune .hint { font-size: 12px; color: var(--dim); line-height: 1.4; }
+.linkbtn { background: transparent; color: var(--dim); height: 30px; font-size: 12px; border: 1px solid var(--line); margin: 0 auto; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&family=Space+Grotesk:wght@500;600&display=swap">
+
+<header>
+  <b>JARVIS</b>
+  <span id="status"><i></i><span id="statusText">standing by</span></span>
+</header>
+
+<div class="stage"><canvas id="orb" aria-label="Jarvis orb"></canvas></div>
+
+<div class="say" id="say" aria-live="polite">
+  <div class="jarvis">Hey creator, JARVIS is ignited.</div>
+</div>
+<div class="linkrow" id="callRow" hidden>
+  <button type="button" class="linkbtn on" id="callBtn">Call</button>
+</div>
+<div class="linkrow" id="calRow" hidden>
+  <button type="button" class="linkbtn on" id="calBtn">Add to Calendar</button>
+  <button type="button" class="linkbtn" id="calIcs">Calendar file</button>
+  <button type="button" class="linkbtn" id="calG">Google Calendar</button>
+</div>
+<div class="linkrow" id="shareRow" hidden>
+  <button type="button" class="linkbtn" id="shShare">Share</button>
+  <button type="button" class="linkbtn" id="shWa">WhatsApp</button>
+  <button type="button" class="linkbtn" id="shSms">SMS</button>
+  <button type="button" class="linkbtn" id="shCopy">Copy</button>
+</div>
+
+<div class="chips" id="chips">
+  <button data-q="What can you help me with today?">What can you do?</button>
+  <button data-q="Give me a plan for a focused two-hour work block.">Plan my next 2 hours</button>
+  <button data-q="Draft a short, polite email asking a colleague to move our meeting to tomorrow.">Draft an email</button>
+</div>
+
+<form class="bar" id="form">
+  <input id="msg" autocomplete="off" placeholder="Ask Jarvis anything" aria-label="Message">
+  <button type="button" class="mic" id="mic" aria-pressed="false" title="Speak" hidden>Mic</button>
+  <button type="button" id="mute" aria-pressed="false" title="Toggle spoken replies">Voice on</button>
+  <button type="submit" class="go">Send</button>
+</form>
+<div class="note" id="note"></div>
+<div class="linkrow">
+  <button type="button" class="linkbtn" id="hands">Hands-free: Off</button>
+  <button type="button" class="linkbtn" id="auto">Auto-send: Off</button>
+  <button type="button" class="linkbtn" id="locBtn">Location: Off</button>
+  <button type="button" class="linkbtn" id="setBtn">Settings</button>
+  <button type="button" class="linkbtn" id="tuneBtn">Change voice</button>
+</div>
+<div class="tune" id="set" hidden>
+  <label>Brain <select id="prov"><option value="gemini">Gemini (free key, can search the web)</option><option value="claude">Claude (paid key)</option></select></label>
+  <label>Gemini API key <input id="gKey" type="password" autocomplete="off" placeholder="Paste your key"></label>
+  <div class="hint">Get a free Gemini key at aistudio.google.com/apikey. Sign in with your Google account and tap Create API key.</div>
+  <label>Claude API key (optional) <input id="cKey" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
+  <label>Microphone language <select id="lang">
+    <option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option>
+    <option value="hi-IN">Hindi</option><option value="ml-IN">Malayalam</option><option value="ta-IN">Tamil</option><option value="te-IN">Telugu</option>
+  </select></label>
+  <button type="button" class="go" id="saveSet">Save</button>
+</div>
+<div class="tune" id="tune" hidden>
+  <label>Voice <select id="voiceSel"></select></label>
+  <div class="row" id="presets">
+    <button type="button" data-p="jarvis">Jarvis</button>
+    <button type="button" data-p="male">Male</button>
+    <button type="button" data-p="female">Female</button>
+    <button type="button" data-p="commander">Commander</button>
+    <button type="button" data-p="robot">Robot</button>
+    <button type="button" data-p="gravel">Gravel</button>
+    <button type="button" data-p="night">Night</button>
+    <button type="button" class="go" id="testV">Test voice</button>
+  </div>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const say = $("say"), msg = $("msg"), note = $("note");
+let state = "idle", level = 0, history = [], voiceOn = true, busy = false, ctrl = null;
+
+const LABEL = { idle: "standing by", listening: "listening", thinking: "thinking", speaking: "speaking" };
+function setState(s) { state = s; document.body.dataset.state = s; $("statusText").textContent = LABEL[s]; }
+setState("idle");
+
+/* ---------- Orb ---------- */
+const cv = $("orb"), cx = cv.getContext("2d");
+let W = 0, H = 0, ang = 0, last = performance.now();
+function fit() {
+  const d = Math.min(window.devicePixelRatio || 1, 1.25), b = cv.getBoundingClientRect();
+  W = b.width; H = b.height; cv.width = W * d; cv.height = H * d; cx.setTransform(d, 0, 0, d, 0, 0);
+}
+new ResizeObserver(fit).observe(cv); fit();
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const TAU = Math.PI * 2;
+const BL = (a) => `rgba(30,150,255,${a})`, CY = (a) => `rgba(110,215,255,${a})`, WH = (a) => `rgba(225,245,255,${a})`;
+function glowArc(mx, my, r, a0, a1, w, col, blur) {
+  cx.beginPath(); cx.arc(mx, my, r, a0, a1); cx.strokeStyle = col;
+  if (blur > 6) { cx.globalAlpha = 0.22; cx.lineWidth = w + blur * 0.45; cx.stroke(); cx.globalAlpha = 1; }
+  cx.lineWidth = w; cx.stroke();
+}
+let lastDraw = 0;
+function frame(now) {
+  if (document.hidden || now - lastDraw < 30) { requestAnimationFrame(frame); return; }
+  lastDraw = now;
+  const dt = Math.min(50, now - last) / 1000; last = now;
+  const target = { idle: 0.06, listening: 0.35, thinking: 0.2, speaking: 0.7 }[state];
+  const wob = state === "speaking" ? (Math.sin(now / 90) + Math.sin(now / 53)) * 0.25 + 0.5 : state === "listening" ? Math.sin(now / 160) * 0.4 + 0.6 : 0.5;
+  level += (target * wob - level) * Math.min(1, dt * 8);
+  ang += dt * (state === "thinking" ? 1.4 : 0.16 + level * 0.5) * (reduce ? 0 : 1);
+  cx.clearRect(0, 0, W, H);
+  const R = Math.min(W, H) * 0.42, mx = W / 2, my = H / 2;
+  // deep blue atmosphere
+  const g = cx.createRadialGradient(mx, my, R * 0.2, mx, my, R * 1.3);
+  g.addColorStop(0, BL(0.30 + level * 0.15)); g.addColorStop(0.55, BL(0.10)); g.addColorStop(1, BL(0));
+  cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+  cx.globalCompositeOperation = "lighter";
+  // outer rim with bright travelling arcs
+  glowArc(mx, my, R, 0, TAU, 1, BL(0.45), 6);
+  for (let k = 0; k < 4; k++) {
+    const s = ang * (0.5 + k * 0.12) + k * 1.6;
+    glowArc(mx, my, R, s, s + 0.35 + k * 0.1, 2.6, CY(0.9), 12);
+  }
+  // dotted data ring, brightness rolling around it
+  const rd = R * 0.9, nd = 110;
+  for (let i = 0; i < nd; i++) {
+    const t = (i / nd) * TAU - ang * 0.35, v = 0.5 + 0.5 * Math.sin(i * 0.5 - now / 400);
+    const x = mx + Math.cos(t) * rd, y = my + Math.sin(t) * rd;
+    cx.beginPath(); cx.arc(x, y, 1.1 + v * 1.2, 0, TAU); cx.fillStyle = CY(0.25 + v * 0.65); cx.fill();
+  }
+  // block ring: a half-circle of little rounded cells, like a readout
+  const rb = R * 0.78, nb = 46, bs = ang * 0.45;
+  for (let i = 0; i < nb; i++) {
+    const t = bs + (i / nb) * Math.PI * 1.25, v = 0.35 + 0.65 * Math.abs(Math.sin(i * 0.9 + now / 500));
+    cx.save(); cx.translate(mx + Math.cos(t) * rb, my + Math.sin(t) * rb); cx.rotate(t + Math.PI / 2);
+    cx.fillStyle = BL(0.25 + v * 0.55); cx.fillRect(-2.2, -4, 4.4, 8); cx.restore();
+  }
+  // mid ring with two thick glowing segments
+  const rm = R * 0.68;
+  glowArc(mx, my, rm, 0, TAU, 1, BL(0.5), 4);
+  glowArc(mx, my, rm, -ang * 0.7, -ang * 0.7 + 1.9, 5, BL(0.85), 16);
+  glowArc(mx, my, rm, -ang * 0.7 + 3.3, -ang * 0.7 + 4.4, 3, CY(0.9), 12);
+  // fine tick ring
+  const rt = R * 0.6;
+  for (let i = 0; i < 150; i++) {
+    const t = (i / 150) * TAU + ang * 0.6, l = i % 5 === 0 ? 9 : 4.5;
+    cx.beginPath(); cx.moveTo(mx + Math.cos(t) * rt, my + Math.sin(t) * rt); cx.lineTo(mx + Math.cos(t) * (rt - l), my + Math.sin(t) * (rt - l));
+    cx.strokeStyle = i % 5 === 0 ? CY(0.7) : BL(0.55); cx.lineWidth = 1; cx.stroke();
+  }
+  // main bright ring: the core of the look, swells with the voice
+  const rc = R * 0.5 + level * R * 0.015;
+  glowArc(mx, my, rc, 0, TAU, 5 + level * 3, CY(0.95), 22 + level * 22);
+  glowArc(mx, my, rc + R * 0.045, 0, TAU, 1.2, BL(0.8), 8);
+  // side flares
+  for (const s of [-1, 1]) {
+    const x0 = mx + s * R * 1.02, fl = cx.createRadialGradient(x0, my, 0, x0, my, R * (0.16 + level * 0.1));
+    fl.addColorStop(0, CY(0.9)); fl.addColorStop(0.3, BL(0.5)); fl.addColorStop(1, BL(0));
+    cx.fillStyle = fl; cx.fillRect(x0 - R * 0.3, my - R * 0.3, R * 0.6, R * 0.6);
+    const ln = cx.createLinearGradient(x0, my, x0 - s * R * 0.3, my);
+    ln.addColorStop(0, CY(0.8)); ln.addColorStop(1, BL(0));
+    cx.fillStyle = ln; cx.fillRect(Math.min(x0, x0 - s * R * 0.3), my - 0.8, R * 0.3, 1.6);
+  }
+  cx.globalCompositeOperation = "source-over";
+  // dark centre disc with a faint voice waveform
+  const rin = R * 0.455;
+  const disc = cx.createRadialGradient(mx, my, 0, mx, my, rin);
+  disc.addColorStop(0, "rgba(2,10,24,0.97)"); disc.addColorStop(1, "rgba(4,24,56,0.97)");
+  cx.beginPath(); cx.arc(mx, my, rin, 0, TAU); cx.fillStyle = disc; cx.fill();
+  cx.beginPath();
+  for (let i = 0; i <= 120; i++) {
+    const t = (i / 120) * TAU, k = i % 120, n = Math.sin(k * 0.55 + now / 150) * Math.sin(k * 0.21 - now / 260);
+    const r = rin * 0.88 + level * R * 0.05 * n, x = mx + Math.cos(t) * r, y = my + Math.sin(t) * r;
+    i ? cx.lineTo(x, y) : cx.moveTo(x, y);
+  }
+  cx.closePath(); cx.lineWidth = 1.2; cx.strokeStyle = CY(0.35 + level * 0.5); cx.stroke();
+  // name
+  cx.textAlign = "center"; cx.textBaseline = "middle";
+  cx.font = `600 ${Math.max(14, R * 0.12)}px "Space Grotesk", system-ui, sans-serif`;
+  cx.fillStyle = WH(0.97); 
+  cx.fillText("J A R V I S", mx, my);
+  cx.shadowBlur = 0;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------- Voice out ---------- */
+const ls = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+let vPitch = parseFloat(ls.get("vPitch", "0.9")), vRate = parseFloat(ls.get("vRate", "1.03"));
+function pickVoice() {
+  const all = speechSynthesis.getVoices();
+  const saved = ls.get("vName", "");
+  const s = saved && all.find((x) => x.name === saved);
+  if (s) return s;
+  const v = all.filter((x) => /^en/i.test(x.lang));
+  return v.find((x) => /daniel|google uk english male|arthur|oliver/i.test(x.name)) || v[0] || null;
+}
+const q = (v) => (/google|neural|enhanced|premium|natural|network/i.test(v.name) ? 1 : 0) + (v.localService ? 0 : 1);
+function fillVoices() {
+  if (!("speechSynthesis" in window)) return;
+  const all = speechSynthesis.getVoices();
+  const sel = $("voiceSel"); if (!all.length) return;
+  const cur = (pickVoice() || {}).name;
+  sel.innerHTML = "";
+  all.slice().sort((a, b) => (/^en/i.test(b.lang) - /^en/i.test(a.lang)) || (q(b) - q(a)) || a.name.localeCompare(b.name)).forEach((v) => {
+    const o = document.createElement("option"); o.value = v.name; o.textContent = v.name + " (" + v.lang + ")"; if (v.name === cur) o.selected = true; sel.appendChild(o);
+  });
+}
+if ("speechSynthesis" in window) {
+  speechSynthesis.onvoiceschanged = fillVoices; fillVoices();
+  let tries = 0;
+  const poll = setInterval(() => {
+    tries++;
+    if (speechSynthesis.getVoices().length) { fillVoices(); clearInterval(poll); }
+    else if (tries > 20) { clearInterval(poll); $("voiceSel").innerHTML = "<option>No voices found on this phone</option>"; note.textContent = "No speech voices are ready on this phone. In Android Settings, open Text-to-speech output, install voice data, then reload Jarvis."; }
+  }, 500);
+}
+$("tuneBtn").onclick = () => { const t = $("tune"); t.hidden = !t.hidden; fillVoices(); };
+$("voiceSel").onchange = (e) => { ls.set("vName", e.target.value); testVoice(); };
+const PRESETS = {
+  jarvis: { pitch: 0.9, rate: 1.0, re: /google uk english male|daniel|arthur|oliver/i, avoid: /female/i },
+  male: { pitch: 0.75, rate: 0.97, re: /google uk english male|daniel|david|alex|mark|james|ravi|prabhat|#male|\bmale\b/i, avoid: /female/i },
+  female: { pitch: 1.1, rate: 1.0, re: /female|samantha|zira|susan|karen|moira|tessa|fiona|victoria|hazel|aria|jenny|heera|neerja|priya|google (us|uk) english(?! male)/i },
+  commander: { pitch: 0.6, rate: 0.88, re: /google uk english male|daniel|david|alex|#male|\bmale\b/i, avoid: /female/i },
+  robot: { pitch: 0.7, rate: 1.1, re: null },
+  gravel: { pitch: 0.55, rate: 0.85, re: /google uk english male|daniel|david|alex|#male|\bmale\b/i, avoid: /female/i },
+  night: { pitch: 0.45, rate: 0.8, re: /google uk english male|daniel|david|alex|#male|\bmale\b/i, avoid: /female/i }
+};
+function markPreset() { const cur = ls.get("vPreset", "jarvis"); document.querySelectorAll("#presets button").forEach((b) => b.classList.toggle("on", b.dataset.p === cur)); }
+function applyPreset(name) {
+  const p = PRESETS[name]; if (!p) return;
+  ls.set("vPreset", name); vPitch = p.pitch; vRate = p.rate;
+  const found = p.re && speechSynthesis.getVoices().find((x) => /^en/i.test(x.lang) && p.re.test(x.name) && !(p.avoid && p.avoid.test(x.name)));
+  ls.set("vName", found ? found.name : "");
+  ls.set("vPitch", vPitch); ls.set("vRate", vRate);
+  fillVoices(); markPreset(); testVoice();
+}
+$("presets").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) applyPreset(b.dataset.p); });
+markPreset();
+function personaNote() { const pv = ls.get("vPreset", "jarvis"); if (pv === "gravel") return "\n\nSpeaking style: a deep, gruff, laid-back tough guy who is loyal and protective, speaks in short, low-key sentences, and values family and friends. Keep every answer accurate."; if (pv === "night") return "\n\nSpeaking style: a dark, brooding, terse night guardian. Very short, serious sentences, dry and intense, calm under pressure. Never quote any film. Keep every answer accurate."; return ls.get("vPreset", "jarvis") === "commander" ? "\n\nSpeaking style: a noble, steady leader with a deep, resonant presence. Calm gravity, short deliberate sentences, warm and loyal toward the user, never boastful. This is only a manner of speaking; keep every answer accurate." : ls.get("vPreset", "jarvis") === "robot" ? "\n\nSpeaking style: a precise, slightly mechanical robot assistant, formal and concise. Keep every answer accurate." : ""; }
+$("testV").onclick = () => testVoice();
+function testVoice() { voiceOn = true; $("mute").textContent = "Voice on"; $("mute").setAttribute("aria-pressed", "false"); speak("All systems are online. How do I sound?"); }
+let speakRun = 0;
+function chunks(text) {
+  const clean = text.replace(/[*_`#]/g, "").replace(/\s+/g, " ").trim();
+  const parts = clean.match(/[^.!?;:\n]+[.!?;:]*/g) || [clean];
+  const out = [];
+  for (let p of parts) {
+    p = p.trim(); if (!p) continue;
+    while (p.length > 120) {
+      let cut = p.lastIndexOf(",", 120); if (cut < 40) cut = p.lastIndexOf(" ", 120); if (cut < 1) cut = 120;
+      out.push(p.slice(0, cut + 1).trim()); p = p.slice(cut + 1).trim();
+    }
+    if (p) out.push(p);
+  }
+  return out;
+}
+function speak(text) {
+  if (!voiceOn) { setState("idle"); afterSpeak(); return; }
+  if (!("speechSynthesis" in window)) { setState("idle"); note.textContent = "This browser has no speech output. Replies show as text only."; return; }
+  const run = ++speakRun, list = chunks(text), v = pickVoice();
+  let i = 0, started = false;
+  try { speechSynthesis.cancel(); } catch (e) {}
+  const finish = () => { if (run === speakRun && state === "speaking") { setState("idle"); afterSpeak(); } };
+  const next = () => {
+    if (run !== speakRun) return;
+    if (i >= list.length) { finish(); return; }
+    const u = new SpeechSynthesisUtterance(list[i++]);
+    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-US";
+    u.rate = vRate; u.pitch = vPitch; u.volume = 1;
+    u.onstart = () => { started = true; setState("speaking"); note.textContent = ""; };
+    u.onend = next;
+    u.onerror = (ev) => {
+      if (run !== speakRun) return;
+      if (ev.error && ev.error !== "canceled" && ev.error !== "interrupted") { note.textContent = "Speech was blocked (" + ev.error + "). Replies show as text only."; finish(); }
+    };
+    speechSynthesis.speak(u);
+  };
+  setState("speaking");
+  setTimeout(next, 80);
+  setTimeout(() => {
+    if (run === speakRun && !started) { try { speechSynthesis.cancel(); } catch (e) {} finish(); note.textContent = "Your browser did not play the voice. Check the volume is up, then use Change voice and Test voice."; }
+  }, 4000);
+}
+$("mute").onclick = () => {
+  voiceOn = !voiceOn; $("mute").textContent = voiceOn ? "Voice on" : "Voice off"; $("mute").setAttribute("aria-pressed", String(!voiceOn));
+  if (!voiceOn) { try { speechSynthesis.cancel(); } catch (e) {} if (state === "speaking") setState("idle"); }
+  else speak("Voice check. Can you hear me?");
+};
+
+/* ---------- Claude ---------- */
+const SYSTEM = "You are Jarvis, a calm, warm, knowledgeable personal AI assistant speaking aloud to one person, like Google Assistant and ChatGPT combined. Answer whatever they ask: facts, explanations, homework, maths, coding, advice, planning, writing, translation, recommendations, and casual chat. Be accurate and say plainly when you are not sure. Your spoken replies are read aloud, so use plain spoken English with no markdown, no bullet lists, no emoji and no headings. Keep simple questions to two to four sentences. When the person asks for detail, an explanation, steps or a story, give a fuller answer of up to about two hundred words, in natural flowing sentences, and say 'first, second, then' for steps. Answer in the language the person writes in. Your knowledge ends in mid 2026, so for anything recent or live, such as news, scores, weather or prices, give what you know, say it may be out of date, and say you cannot check live information from this page. You cannot read their email or calendar, send messages or open apps from this page, but you can draft the text for them. Address the user directly.";
+const MARKET = { asOf: "2026-11-14T08:55:00+05:30", text: "Gold in India, indicative retail rates noted on 14 November 2026: 24 carat about 13,570 rupees per gram (about 1,35,700 per 10 grams). 22 carat about 12,445 rupees per gram (about 1,24,450 per 10 grams) by purity; one source lists 12,915 per gram. Rates exclude GST and making charges. Sources: goldtracker.in and policybazaar.com." };
+function marketNote() {
+  const h = Math.max(0, Math.round((Date.now() - new Date(MARKET.asOf)) / 36e5));
+  return "\n\nReference data saved in this page, NOT live: " + MARKET.text + " This data is about " + h + " hours old. When asked about gold prices, give these figures, say they were noted on 14 November and may have changed since, and that you cannot check live rates from this page. Never present them as live. For any other live price or news, say you cannot look it up here.";
+}
+/* ---------- Settings ---------- */
+$("prov").value = ls.get("prov", "gemini"); $("gKey").value = ls.get("gKey", ""); $("cKey").value = ls.get("cKey", ""); $("lang").value = ls.get("lang", "en-IN");
+$("setBtn").onclick = () => { $("set").hidden = !$("set").hidden; };
+$("saveSet").onclick = () => {
+  ls.set("prov", $("prov").value); ls.set("gKey", $("gKey").value.trim()); ls.set("cKey", $("cKey").value.trim()); ls.set("lang", $("lang").value); ls.set("gModel", "");
+  $("set").hidden = true; note.textContent = "Saved. Tap Mic and speak.";
+};
+if (!ls.get("gKey", "") && !ls.get("cKey", "")) { $("set").hidden = false; note.textContent = "Paste a free Gemini key to start."; }
+
+/* ---------- Brain ---------- */
+const coded = (code, message) => Object.assign(new Error(message), { code });
+const GBASE = "https://generativelanguage.googleapis.com/v1beta";
+function tfetch(url, opts, ms) {
+  const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
+  if (opts && opts.signal) { if (opts.signal.aborted) c.abort(); else opts.signal.addEventListener("abort", () => c.abort()); }
+  return fetch(url, { ...opts, signal: c.signal }).finally(() => clearTimeout(t));
+}
+async function gemModel(key) {
+  const cached = ls.get("gModel", ""); if (cached) return cached;
+  try {
+    const r = await tfetch(GBASE + "/models?pageSize=200", { headers: { "x-goog-api-key": key } }, 8000);
+    if (r.ok) {
+      const j = await r.json(), ver = (n) => parseFloat(n.match(/gemini-([\d.]+)-flash/)[1]);
+      const ok = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes("generateContent") && /^models\/gemini-[\d.]+-flash$/.test(m.name));
+      ok.sort((a, b) => ver(b.name) - ver(a.name));
+      if (ok.length) { ls.set("gModel", ok[0].name); return ok[0].name; }
+    }
+  } catch (e) {}
+  return "models/gemini-flash-latest";
+}
+async function callGemini(prompt, signal) {
+  const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
+  const p = prompt
+    .replace("say it may be out of date, and say you cannot check live information from this page", "search the web and answer with the current facts")
+    .replace(/\n\nReference data saved in this page[\s\S]*?(?=\n\nConversation so far)/, "\n\nYou can search Google for current information. Use it for news, prices, weather, scores and anything recent, and answer with the current facts in plain spoken sentences.");
+  const body = { contents: [{ role: "user", parts: [{ text: p }] }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: 3000 } };
+  let model = await gemModel(key);
+  const t0 = Date.now(), fake = { ok: false, status: 599, json: async () => ({}), clone() { return this; } };
+  const post = async (m, b) => {
+    if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+    try { return await tfetch(GBASE + "/" + m + ":generateContent", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(b), signal }, 15000); }
+    catch (e) { if (signal && signal.aborted) throw e; return fake; }
+  };
+  const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  /* Speed: Google Search and big "thinking" models are slow. Use them only when the question needs fresh facts. */
+  const lastUser = ((prompt.match(/User: ([^\n]*)(?:\n|$)(?![\s\S]*User: )/) || [])[1] || "");
+  const needSearch = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live/i.test(lastUser);
+  const models = needSearch
+    ? [...new Set([model, "models/gemini-flash-latest", "models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite"])]
+    : [...new Set(["models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite", model, "models/gemini-flash-latest"])];
+  const retryable = (c) => [500, 502, 503, 504].includes(c);
+  const textOf = (jj) => ((jj.candidates && jj.candidates[0] && jj.candidates[0].content && jj.candidates[0].content.parts) || []).map((x) => x.text || "").join("").trim();
+  let r = null, lastErr = null, emptyWhy = "";
+  for (let mi = 0; mi < models.length; mi++) {
+    const m = models[mi];
+    if (mi > 0 && Date.now() - t0 > 30000) break;
+    if (mi > 0) note.textContent = "Trying another model...";
+    for (const useTools of needSearch ? [true, false] : [false]) {
+      const b = useTools ? body : { contents: body.contents, generationConfig: body.generationConfig };
+      r = await post(m, b);
+      if (retryable(r.status)) { note.textContent = "Server busy, trying again..."; await wait(1200); r = await post(m, b); }
+      if (r.ok) {
+        const jj = await r.json().catch(() => ({})), txt = textOf(jj);
+        if (txt) return txt;
+        const c0 = jj.candidates && jj.candidates[0];
+        emptyWhy = (jj.promptFeedback && jj.promptFeedback.blockReason) || (c0 && c0.finishReason) || "no text";
+        if (useTools) { note.textContent = "Searching gave no text, answering without search..."; continue; }
+        break;   // plain answer also empty: try the next model
+      }
+      const jj = await r.clone().json().catch(() => ({}));
+      lastErr = jj;
+      if (r.status === 599) break;
+      if (r.status === 400 || r.status === 429) continue;   // try again without Google Search, which has its own small free limit
+      break;
+    }
+    if (!r.ok && ![404, 429, 500, 502, 503, 504, 599].includes(r.status)) break;   // key problem etc: do not hammer other models
+  }
+  if (r && r.ok) throw coded("empty", "Gemini could not answer that (" + emptyWhy + "). Try asking it a different way.");
+  const j = lastErr || {};
+  if (r.status === 429) {
+    const raw = JSON.stringify(j);
+    if (/PerDay/i.test(raw)) throw coded("rate_limited", "Today's free Gemini limit is used up. It resets around 1:30 pm India time. A new key from another project also works.");
+    throw coded("rate_limited", "Too many questions in a minute. Wait about a minute and ask again.");
+  }
+  if (r.status === 599) throw coded("timeout", "Google did not answer in time. Check your internet connection and ask again.");
+  if (retryable(r.status)) throw coded("api", "Google's server is overloaded. Wait a few seconds and ask again.");
+  throw coded("api", (j.error && j.error.message) || ("Gemini error " + r.status));
+}
+async function callClaude(prompt, signal) {
+  const key = ls.get("cKey", ""); if (!key) throw coded("no_key", "Add your Claude key in Settings.");
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", signal,
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 700, messages: [{ role: "user", content: prompt }] }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw coded(r.status === 429 ? "rate_limited" : "api", (j.error && j.error.message) || ("Claude error " + r.status));
+  return (j.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+}
+const sample = async (input, opts) => {
+  const prompt = input[0].content;
+  return { text: ls.get("prov", "gemini") === "claude" ? await callClaude(prompt, opts && opts.signal) : await callGemini(prompt, opts && opts.signal) };
+};
+
+function show(you, reply) {
+  say.innerHTML = "";
+  const a = document.createElement("div"); a.className = "you"; a.textContent = "You: " + you;
+  const b = document.createElement("div"); b.className = "jarvis"; b.textContent = reply;
+  say.append(a, b); return b;
+}
+
+const CAL_RULE = "\n\nCALENDAR: When the user asks you to add, schedule, book or set a reminder or event, confirm it in one short spoken sentence (say the day and time in plain words), and then add one final line in exactly this form with nothing after it: [[EVENT {\"title\":\"...\",\"start\":\"YYYY-MM-DDTHH:MM\",\"end\":\"YYYY-MM-DDTHH:MM\",\"details\":\"...\"}]]  Use the user's local time. If they give no end time, make it one hour after the start. If the day or time is missing, ask one short question instead and add no EVENT line. You cannot read their calendar from this page; if asked what is on it, say so and offer to add events instead.";
+function nowNote() { const d = new Date(); return "\n\nCurrent local date and time: " + d.toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short", hour12: true }) + " (India, UTC+05:30). Use this for words like today and tomorrow."; }
+const CALL_RULE = "\n\nCALLS: When the user asks you to call or phone someone, say in one short sentence that you are getting it ready and they should tap the Call button, then add one final line in exactly this form with nothing after it: [[CALL {\"name\":\"Mom\",\"number\":\"\"}]]  Put the phone number in digits only if the user said a number out loud; otherwise leave it empty. You cannot dial by yourself: the user taps the button and then the phone's dialer opens.";
+let lastCall = null;
+function extractCall(reply) {
+  const m = /\[\[CALL\s*(\{[\s\S]*?\})\s*\]\]/.exec(reply);
+  if (!m) return { clean: reply, call: null };
+  let call = null;
+  try { const o = JSON.parse(m[1]); call = { name: String(o.name || "").trim(), number: String(o.number || "").replace(/[^\d+]/g, "") }; if (!call.name && !call.number) call = null; } catch (e) {}
+  return { clean: reply.replace(m[0], "").trim() || "Done.", call };
+}
+const getBook = () => { try { return JSON.parse(ls.get("book", "{}")) || {}; } catch (e) { return {}; } };
+const keyName = (n) => n.toLowerCase().replace(/[^a-z0-9ഀ-ൿ]+/g, " ").trim();
+function dial(num) { location.href = "tel:" + num; }
+$("callBtn").onclick = async () => {
+  if (!lastCall) return; const c = lastCall, book = getBook(), k = keyName(c.name);
+  if (c.number) { if (k) { book[k] = c.number; ls.set("book", JSON.stringify(book)); } dial(c.number); return; }
+  if (k && book[k]) { dial(book[k]); return; }
+  if (navigator.contacts && navigator.contacts.select) {
+    try {
+      const pick = await navigator.contacts.select(["name", "tel"], { multiple: false });
+      if (pick && pick[0] && pick[0].tel && pick[0].tel[0]) {
+        const num = pick[0].tel[0].replace(/[^\d+]/g, "");
+        if (k) { book[k] = num; ls.set("book", JSON.stringify(book)); note.textContent = "Saved. Next time \"" + c.name + "\" dials directly."; }
+        dial(num);
+      }
+    } catch (e) { note.textContent = "Contact list was not opened."; }
+    return;
+  }
+  note.textContent = "This browser cannot open your contacts. Say the number out loud, like: call 98765 43210.";
+};
+/* ---------- Location (only sent for questions that need it) ---------- */
+const LOCQ = /near|nearby|nearest|close by|around me|around here|\bhere\b|my location|my area|local|where am i|weather|temperature|rain|open now|restaurant|cafe|shop|showroom|hotel|petrol|pump|hospital|pharmacy|medical|atm|bank|station|mall|directions|route|distance/i;
+let locOn = ls.get("loc", "0") === "1";
+function getPos() {
+  return new Promise((ok) => {
+    if (!navigator.geolocation) return ok(null);
+    navigator.geolocation.getCurrentPosition((p) => ok(p.coords), () => ok(null), { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 });
+  });
+}
+function paintLoc() { $("locBtn").textContent = "Location: " + (locOn ? "On" : "Off"); $("locBtn").classList.toggle("on", locOn); }
+$("locBtn").onclick = async () => {
+  if (locOn) { locOn = false; ls.set("loc", "0"); paintLoc(); note.textContent = "Location is off. Jarvis will not use it."; return; }
+  note.textContent = "Allow location when Chrome asks...";
+  const pos = await getPos();
+  if (!pos) { note.textContent = "Location was blocked. In Chrome tap the lock icon, Permissions, allow Location, then try again."; return; }
+  locOn = true; ls.set("loc", "1"); paintLoc(); note.textContent = "Location is on. Only used when you ask things like near me.";
+};
+paintLoc();
+let lastEvent = null;
+const pad2 = (n) => String(n).padStart(2, "0");
+const ymd = (d) => d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + "T" + pad2(d.getHours()) + pad2(d.getMinutes()) + "00";
+function parseWhen(t) { const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(t || ""); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null; }
+function extractEvent(reply) {
+  const m = /\[\[EVENT\s*(\{[\s\S]*?\})\s*\]\]/.exec(reply);
+  if (!m) return { clean: reply, ev: null };
+  let ev = null;
+  try { const o = JSON.parse(m[1]); const st = parseWhen(o.start); if (st) { let en = parseWhen(o.end); if (!en || en <= st) en = new Date(st.getTime() + 36e5); ev = { title: String(o.title || "Event"), details: String(o.details || ""), st, en }; } } catch (e) {}
+  return { clean: reply.replace(m[0], "").trim() || "Done.", ev };
+}
+const encv = (v) => encodeURIComponent(v);
+$("calBtn").onclick = () => {
+  if (!lastEvent) return; const e = lastEvent;
+  /* Android intent: opens the phone's own Calendar app on a new event, already filled in. */
+  location.href = "intent:#Intent;action=android.intent.action.INSERT;type=vnd.android.cursor.dir/event;S.title=" + encv(e.title) + ";S.description=" + encv(e.details) + ";l.beginTime=" + e.st.getTime() + ";l.endTime=" + e.en.getTime() + ";end";
+  note.textContent = "If nothing opened, tap Calendar file instead.";
+};
+$("calIcs").onclick = () => {
+  if (!lastEvent) return; const e = lastEvent;
+  const fmt = (d) => ymd(d);
+  const esc = (t) => String(t).replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Jarvis//EN", "BEGIN:VEVENT", "UID:" + Date.now() + "@jarvis", "DTSTAMP:" + new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z",
+    "DTSTART;TZID=Asia/Kolkata:" + fmt(e.st), "DTEND;TZID=Asia/Kolkata:" + fmt(e.en), "SUMMARY:" + esc(e.title), "DESCRIPTION:" + esc(e.details), "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" })); a.download = "jarvis-event.ics";
+  document.body.appendChild(a); a.click(); a.remove();
+  note.textContent = "Saved jarvis-event.ics. Open it from your Downloads to add it to your calendar.";
+};
+$("calG").onclick = () => {
+  if (!lastEvent) return; const e = lastEvent;
+  window.open("https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + encv(e.title) + "&dates=" + ymd(e.st) + "/" + ymd(e.en) + "&ctz=Asia%2FKolkata&details=" + encv(e.details), "_blank");
+};
+let lastReply = "";
+async function ask(text) {
+  text = text.trim(); if (!text || busy) return;
+  if (!sample) { note.textContent = "Claude is not available in this view."; return; }
+  busy = true; try { speechSynthesis.cancel(); } catch (e) {}
+  msg.value = ""; setState("thinking"); note.textContent = ""; $("calRow").hidden = true; lastEvent = null; $("callRow").hidden = true; lastCall = null;
+  const out = show(text, "…");
+  history.push({ role: "user", content: text });
+  let locNote = "";
+  if (locOn && LOCQ.test(text)) {
+    const pos = await getPos();
+    if (pos) locNote = "\n\nThe user's current location (approximate, from their phone): latitude " + pos.latitude.toFixed(4) + ", longitude " + pos.longitude.toFixed(4) + " (accuracy about " + Math.round(pos.accuracy) + " m). Use it for words like near me, nearby, here and local, and name the town or area you think this is.";
+    else note.textContent = "Could not get your location, answering without it.";
+  }
+  const turns = history.slice(-12);
+  const input = [{ role: "user", content: SYSTEM + CAL_RULE + CALL_RULE + nowNote() + locNote + personaNote() + marketNote() + "\n\nConversation so far follows. Reply only as Jarvis to the last user line.\n\n" +
+    turns.map((m) => (m.role === "user" ? "User: " : "Jarvis: ") + m.content).join("\n") }];
+  ctrl = new AbortController();
+  const slowT = setTimeout(() => { if (busy && !note.textContent) note.textContent = "Still thinking... slow connection."; }, 7000);
+  try {
+    const r = await sample(input, { cache: false, signal: ctrl.signal, modelTier: "quick", onText: ({ text: t }) => { out.textContent = t || "…"; } });
+    const got0 = extractEvent((r.text || "").trim() || "I have nothing to add."), got1 = extractCall(got0.clean), got = { clean: got1.clean, ev: got0.ev }; const reply = got.clean; lastEvent = got.ev; lastCall = got1.call;
+    $("callRow").hidden = !lastCall; if (lastCall) $("callBtn").textContent = "Call " + (lastCall.name || lastCall.number);
+    $("calRow").hidden = !lastEvent; if (lastEvent) $("calBtn").textContent = "Add to phone calendar: " + lastEvent.title + ", " + lastEvent.st.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
+    out.textContent = reply; history.push({ role: "assistant", content: reply }); lastReply = reply; $("shareRow").hidden = false;
+    speak(reply);
+  } catch (e) {
+    history.pop(); setState("idle"); note.textContent = String((e && e.message) || "").slice(0, 200);
+    out.textContent = e?.code === "not_granted" ? "Permission to use Claude was declined." : (e?.code === "rate_limited" || e?.code === "timeout" || e?.code === "no_key" || e?.code === "empty") ? (e.message || "Try again in a moment.") : "That did not go through. Try again."; note.textContent = String((e && e.message) || e).slice(0, 200);
+  } finally { clearTimeout(slowT); busy = false; ctrl = null; }
+}
+$("form").addEventListener("submit", (e) => { e.preventDefault(); clearTimeout(autoT); ask(msg.value); });
+/* Keyboard voice typing inserts whole phrases at once and never presses Send. Send it for the user after a short pause. */
+let autoT = null, autoOn = ls.get("autoSend2", "1") === "1", lastKey = 0;
+function paintAuto() { $("auto").textContent = "Auto-send: " + (autoOn ? "On" : "Off"); $("auto").classList.toggle("on", autoOn); }
+$("auto").onclick = () => {
+  autoOn = !autoOn; ls.set("autoSend2", autoOn ? "1" : "0"); clearTimeout(autoT); paintAuto();
+  note.textContent = autoOn ? "Auto-send is on. Words from your keyboard mic are sent when you pause. Typing never sends by itself." : "Auto-send is off. Tap Send to send.";
+};
+paintAuto();
+msg.addEventListener("keydown", () => { lastKey = Date.now(); clearTimeout(autoT); });
+msg.addEventListener("input", () => {
+  clearTimeout(autoT);
+  if (!autoOn || msg.value.trim().length < 2) return;
+  if (Date.now() - lastKey < 700) return; /* typed by hand: wait for Send */
+  note.textContent = "Heard you. Sending when you pause...";
+  autoT = setTimeout(() => { if (!busy && msg.value.trim()) ask(msg.value); }, 1800);
+});
+$("chips").addEventListener("click", (e) => { const q = e.target.closest("button")?.dataset.q; if (q) ask(q); });
+
+/* ---------- Voice in: tap Mic, speak, it sends itself ---------- */
+const mic = $("mic"), SRC = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, handsFree = ls.get("hands", "0") === "1", micUsed = false;
+function paintHands() { $("hands").textContent = "Hands-free: " + (handsFree ? "On" : "Off"); $("hands").classList.toggle("on", handsFree); }
+$("hands").onclick = () => { handsFree = !handsFree; ls.set("hands", handsFree ? "1" : "0"); paintHands(); note.textContent = handsFree ? "Hands-free on. After Jarvis answers, it listens again by itself." : "Hands-free off."; };
+paintHands();
+function afterSpeak() { if (handsFree && micUsed) setTimeout(startListen, 600); }
+function startListen() {
+  if (!SRC || rec || busy) return;
+  try { speechSynthesis.cancel(); } catch (e) {}
+  rec = new SRC(); rec.lang = ls.get("lang", "en-IN"); rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  let heard = "";
+  rec.onstart = () => { mic.setAttribute("aria-pressed", "true"); mic.textContent = "Stop"; setState("listening"); note.textContent = "Listening..."; };
+  rec.onresult = (e) => { let t = ""; for (const r of e.results) t += r[0].transcript; heard = t; msg.value = t; };
+  rec.onerror = (e) => {
+    if (e.error === "no-speech") note.textContent = "I did not hear anything. Tap Mic and try again.";
+    else if (e.error === "not-allowed" || e.error === "service-not-allowed") note.textContent = "Microphone is blocked. In Chrome, tap the icon left of the address, then Permissions, and allow Microphone.";
+    else if (e.error !== "aborted") note.textContent = "Mic problem: " + e.error;
+  };
+  rec.onend = () => {
+    mic.setAttribute("aria-pressed", "false"); mic.textContent = "Mic"; rec = null;
+    if (state === "listening") setState("idle");
+    const t = (heard || "").trim(); if (t) { note.textContent = ""; ask(t); }
+  };
+  try { rec.start(); micUsed = true; } catch (e) { rec = null; }
+}
+if (SRC) { mic.hidden = false; mic.onclick = () => { if (rec) rec.stop(); else startListen(); }; }
+else note.textContent = "This browser has no speech recognition. Open Jarvis in Chrome.";
+
+/* ---------- Share the last answer ---------- */
+function shareText() { return lastReply; }
+$("shShare").onclick = async () => {
+  const t = shareText(); if (!t) return;
+  try { if (navigator.share) { await navigator.share({ text: t }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+  note.textContent = "Share is not available here. Use WhatsApp or Copy.";
+};
+$("shWa").onclick = () => { const t = shareText(); if (t) window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank"); };
+$("shSms").onclick = () => { const t = shareText(); if (t) location.href = "sms:?body=" + encodeURIComponent(t); };
+$("shCopy").onclick = async () => {
+  const t = shareText(); if (!t) return;
+  try { await navigator.clipboard.writeText(t); note.textContent = "Copied."; }
+  catch (e) { note.textContent = "Could not copy. Long-press the text to copy it."; }
+};
+
+/* ---------- Spoken greeting when Jarvis opens ---------- */
+(function greetOnOpen() {
+  const text = "Hey creator, JARVIS is ignited.";
+  if (!("speechSynthesis" in window)) return;
+  let played = false, armed = false;
+  const run = () => {
+    if (!voiceOn || busy || played) return;
+    try { speechSynthesis.cancel(); } catch (e) {}
+    const u = new SpeechSynthesisUtterance(text), v = pickVoice();
+    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-US";
+    u.rate = vRate; u.pitch = vPitch; u.volume = 1;
+    u.onstart = () => { played = true; setState("speaking"); };
+    u.onend = u.onerror = () => { if (state === "speaking") setState("idle"); };
+    speechSynthesis.speak(u);
+  };
+  setTimeout(run, 1000);
+  setTimeout(() => {
+    if (played || armed) return;
+    armed = true; try { speechSynthesis.cancel(); } catch (e) {}
+    const once = () => { ["pointerdown", "keydown", "touchstart"].forEach((ev) => removeEventListener(ev, once, true)); run(); };
+    ["pointerdown", "keydown", "touchstart"].forEach((ev) => addEventListener(ev, once, true));
+  }, 2600);
+})();
+
+/* Installable app: lets Chrome treat this page as a real app and open it even when offline */
+if ("serviceWorker" in navigator) { addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); }); }
+</script>
+
+</body></html>
