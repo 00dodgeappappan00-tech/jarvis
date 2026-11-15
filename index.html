@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 19 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 20 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -126,6 +126,7 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <button type="button" class="linkbtn" id="hands">Hands-free: Off</button>
   <button type="button" class="linkbtn" id="auto">Auto-send: Off</button>
   <button type="button" class="linkbtn" id="locBtn">Location: Off</button>
+  <button type="button" class="linkbtn" id="webBtn">Web search: Auto</button>
   <button type="button" class="linkbtn" id="musBtn">Music</button>
   <button type="button" class="linkbtn" id="ringBtn">Ring theme</button>
   <button type="button" class="linkbtn" id="memBtn">Memory</button>
@@ -486,17 +487,18 @@ async function gemModel(key) {
   } catch (e) {}
   return "models/gemini-flash-latest";
 }
+const webAlways = () => ls.get("webAlways", "0") === "1";
 function gemPrompt(prompt) {
   return prompt
     .replace("say it may be out of date, and say you cannot check live information from this page", "search the web and answer with the current facts")
     .replace(/\n\nReference data saved in this page[\s\S]*?(?=\n\nConversation so far)/, "\n\nYou can search Google for current information. Use it for news, prices, weather, scores and anything recent, and answer with the current facts in plain spoken sentences.");
 }
 const lastUserOf = (prompt) => ((prompt.match(/User: ([^\n]*)(?:\n|$)(?![\s\S]*User: )/) || [])[1] || "");
-const NEEDSEARCH = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live/i;
+const NEEDSEARCH = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live|who\b|whom|president|prime minister|minister|chief minister|\bceo\b|launch|new\b|update|version|winner|champion|trending|iphone|samsung|pixel|\bipl\b|world cup|election|covid|movie|film|season|episode|song|album|anyone|latest|newest|best\b|top \d|vs\b|compare|review/i;
 /* Streaming: words arrive as Gemini writes them. Any problem before text arrives falls back to the normal call. */
 async function streamGemini(prompt, signal, onText) {
   const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
-  const need = NEEDSEARCH.test(lastUserOf(prompt));
+  const need = webAlways() || NEEDSEARCH.test(lastUserOf(prompt));
   const model = need ? await gemModel(key) : "models/gemini-flash-lite-latest";
   const body = { contents: [{ role: "user", parts: [{ text: gemPrompt(prompt) }] }], generationConfig: { maxOutputTokens: 3000 } };
   if (need) body.tools = [{ google_search: {} }];
@@ -542,7 +544,7 @@ async function callGemini(prompt, signal) {
   const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
   /* Speed: Google Search and big "thinking" models are slow. Use them only when the question needs fresh facts. */
   const lastUser = lastUserOf(prompt);
-  const needSearch = NEEDSEARCH.test(lastUser);
+  const needSearch = webAlways() || NEEDSEARCH.test(lastUser);
   const _unused = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live/i.test(lastUser);
   const models = needSearch
     ? [...new Set([model, "models/gemini-flash-latest", "models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite"])]
@@ -850,6 +852,9 @@ $("newChat").onclick = () => { try { speechSynthesis.cancel(); } catch (e) {} hi
 $("histClear").onclick = () => { ls.set("chats", "[]"); curChat = null; paintHist(); note.textContent = "Saved chats deleted."; };
 paintHist();
 
+function paintWeb() { const on = webAlways(); $("webBtn").textContent = "Web search: " + (on ? "Always" : "Auto"); $("webBtn").classList.toggle("on", on); }
+$("webBtn").onclick = () => { ls.set("webAlways", webAlways() ? "0" : "1"); paintWeb(); note.textContent = webAlways() ? "Jarvis now checks Google for every question. Answers are up to date but a few seconds slower." : "Auto: Jarvis searches Google for news, prices, sports and anything recent, and answers the rest instantly."; };
+paintWeb();
 /* ---------- Ring theme ---------- */
 function setRing(name, say_) {
   if (!THEMES[name]) name = "blue";
