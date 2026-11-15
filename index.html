@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 17 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 18 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -62,6 +62,15 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
 .tune input[type=password] { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 15px; width: 100%; box-sizing: border-box; }
 .tune .hint { font-size: 12px; color: var(--dim); line-height: 1.4; }
 .linkbtn { background: transparent; color: var(--dim); height: 30px; font-size: 12px; border: 1px solid var(--line); margin: 0 auto; }
+.lst { display: flex; flex-direction: column; gap: 6px; max-height: 38vh; overflow-y: auto; }
+.lst .it { display: flex; gap: 8px; align-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; font-size: 13px; }
+.lst .it span { flex: 1; min-width: 0; overflow-wrap: anywhere; cursor: default; }
+.lst .it small { color: var(--dim); display: block; font-size: 11px; }
+.lst .it button { height: 28px; min-width: 28px; padding: 0 10px; font-size: 12px; }
+.lst .empty { color: var(--dim); font-size: 12px; text-align: center; padding: 6px; }
+.tm { display: flex; gap: 8px; align-items: center; justify-content: center; background: var(--panel); border: 1px solid var(--ember); border-radius: 999px; padding: 4px 6px 4px 14px; font-family: var(--font-mono); font-size: 13px; }
+.tm b { color: var(--glow); font-weight: 500; }
+.tm button { height: 26px; min-width: 26px; padding: 0 10px; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&family=Space+Grotesk:wght@500;600&display=swap">
@@ -82,10 +91,13 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
 <div class="linkrow" id="callRow" hidden>
   <button type="button" class="linkbtn on" id="callBtn">Call</button>
 </div>
+<div class="linkrow" id="timers"></div>
 <div class="linkrow" id="calRow" hidden>
-  <button type="button" class="linkbtn on" id="calBtn">Add to Calendar</button>
-  <button type="button" class="linkbtn" id="calIcs">Calendar file</button>
+  <button type="button" class="linkbtn on" id="calIcs">Add to phone calendar</button>
   <button type="button" class="linkbtn" id="calG">Google Calendar</button>
+</div>
+<div class="linkrow" id="alertRow" hidden>
+  <button type="button" class="linkbtn" id="alertBtn">Allow timer alerts</button>
 </div>
 <div class="linkrow" id="shareRow" hidden>
   <button type="button" class="linkbtn" id="shShare">Share</button>
@@ -111,13 +123,25 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <button type="button" class="linkbtn" id="hands">Hands-free: Off</button>
   <button type="button" class="linkbtn" id="auto">Auto-send: Off</button>
   <button type="button" class="linkbtn" id="locBtn">Location: Off</button>
+  <button type="button" class="linkbtn" id="memBtn">Memory</button>
+  <button type="button" class="linkbtn" id="histBtn">History</button>
   <button type="button" class="linkbtn" id="setBtn">Settings</button>
   <button type="button" class="linkbtn" id="tuneBtn">Change voice</button>
+</div>
+<div class="tune" id="memP" hidden>
+  <div class="hint">What Jarvis remembers about you. It is saved only on this phone. Tell Jarvis "remember that..." or "forget...", or remove items here.</div>
+  <div class="lst" id="memList"></div>
+  <button type="button" class="linkbtn" id="memClear">Forget everything</button>
+</div>
+<div class="tune" id="hist" hidden>
+  <button type="button" class="go" id="newChat">New chat</button>
+  <div class="lst" id="histList"></div>
+  <button type="button" class="linkbtn" id="histClear">Delete all saved chats</button>
 </div>
 <div class="tune" id="set" hidden>
   <label>Brain <select id="prov"><option value="gemini">Gemini (free key, can search the web)</option><option value="claude">Claude (paid key)</option></select></label>
   <label>Gemini API key <input id="gKey" type="password" autocomplete="off" placeholder="Paste your key"></label>
-  <div class="hint">Get a free Gemini key at aistudio.google.com/apikey. Sign in with your Google account and tap Create API key.</div>
+  <div class="hint">Get a free Gemini key at aistudio.google.com/app/apikey. Sign in with your Google account and tap Create API key.</div>
   <label>Claude API key (optional) <input id="cKey" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
   <label>Microphone language <select id="lang">
     <option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option>
@@ -347,6 +371,51 @@ function speak(text) {
     if (run === speakRun && !started) { try { speechSynthesis.cancel(); } catch (e) {} finish(); note.textContent = "Your browser did not play the voice. Check the volume is up, then use Change voice and Test voice."; }
   }, 4000);
 }
+/* Speaks sentence by sentence while the answer is still arriving */
+function makeLive() {
+  if (!voiceOn || !("speechSynthesis" in window)) return null;
+  const run = ++speakRun, v = pickVoice();
+  let sent = 0, q = [], playing = false, done = false, any = false, guard = false;
+  try { speechSynthesis.cancel(); } catch (e) {}
+  const finish = () => { if (run === speakRun) { setState("idle"); afterSpeak(); } };
+  const pump = () => {
+    if (run !== speakRun || playing) return;
+    if (!q.length) { if (done) finish(); return; }
+    playing = true;
+    const u = new SpeechSynthesisUtterance(q.shift());
+    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-US";
+    u.rate = vRate; u.pitch = vPitch; u.volume = 1;
+    u.onstart = () => { any = true; setState("speaking"); note.textContent = ""; };
+    u.onend = () => { playing = false; pump(); };
+    u.onerror = (ev) => {
+      playing = false; if (run !== speakRun) return;
+      if (ev.error && ev.error !== "canceled" && ev.error !== "interrupted") { note.textContent = "Speech was blocked (" + ev.error + "). Replies show as text only."; q = []; done = true; }
+      pump();
+    };
+    speechSynthesis.speak(u);
+  };
+  return {
+    feed(text, final) {
+      if (run !== speakRun) return;
+      const clean = String(text).replace(/\[\[[\s\S]*$/, "").replace(/[*_`#]/g, "");
+      const rest = clean.slice(sent);
+      let cut = 0;
+      if (final) cut = rest.length;
+      else {
+        const re = /[.!?;:\n](?=\s)/g; let m; while ((m = re.exec(rest))) cut = m.index + 1;
+        if (!cut && sent === 0 && rest.length > 90) { cut = rest.lastIndexOf(", ", 90) + 1 || rest.lastIndexOf(" ", 90); if (cut < 30) cut = 0; }
+      }
+      if (cut > 0) {
+        const piece = rest.slice(0, cut); sent += cut;
+        chunks(piece).forEach((c) => q.push(c));
+        if (!guard && q.length) { guard = true; setTimeout(() => { if (run === speakRun && !any) { try { speechSynthesis.cancel(); } catch (e) {} q = []; done = true; finish(); note.textContent = "Your browser did not play the voice. Check the volume is up, then use Change voice and Test voice."; } }, 4000); }
+      }
+      if (final) done = true;
+      pump();
+    },
+    cancel() { if (run === speakRun) { speakRun++; try { speechSynthesis.cancel(); } catch (e) {} } }
+  };
+}
 $("mute").onclick = () => {
   voiceOn = !voiceOn; $("mute").textContent = voiceOn ? "Voice on" : "Voice off"; $("mute").setAttribute("aria-pressed", String(!voiceOn));
   if (!voiceOn) { try { speechSynthesis.cancel(); } catch (e) {} if (state === "speaking") setState("idle"); }
@@ -390,11 +459,51 @@ async function gemModel(key) {
   } catch (e) {}
   return "models/gemini-flash-latest";
 }
-async function callGemini(prompt, signal) {
-  const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
-  const p = prompt
+function gemPrompt(prompt) {
+  return prompt
     .replace("say it may be out of date, and say you cannot check live information from this page", "search the web and answer with the current facts")
     .replace(/\n\nReference data saved in this page[\s\S]*?(?=\n\nConversation so far)/, "\n\nYou can search Google for current information. Use it for news, prices, weather, scores and anything recent, and answer with the current facts in plain spoken sentences.");
+}
+const lastUserOf = (prompt) => ((prompt.match(/User: ([^\n]*)(?:\n|$)(?![\s\S]*User: )/) || [])[1] || "");
+const NEEDSEARCH = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live/i;
+/* Streaming: words arrive as Gemini writes them. Any problem before text arrives falls back to the normal call. */
+async function streamGemini(prompt, signal, onText) {
+  const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
+  const need = NEEDSEARCH.test(lastUserOf(prompt));
+  const model = need ? await gemModel(key) : "models/gemini-flash-lite-latest";
+  const body = { contents: [{ role: "user", parts: [{ text: gemPrompt(prompt) }] }], generationConfig: { maxOutputTokens: 3000 } };
+  if (need) body.tools = [{ google_search: {} }];
+  const r = await tfetch(GBASE + "/" + model + ":streamGenerateContent?alt=sse", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(body), signal }, 15000);
+  if (!r.ok || !r.body) throw coded("stream_fail", "stream " + r.status);
+  const rd = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", full = "";
+  const stall = () => new Promise((_, no) => setTimeout(() => no(coded("stream_fail", "stalled")), 15000));
+  try {
+    for (;;) {
+      const { done, value } = await Promise.race([rd.read(), stall()]);
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        let j; try { j = JSON.parse(line.slice(5)); } catch (e) { continue; }
+        const parts = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
+        const t = parts.map((x) => x.text || "").join("");
+        if (t) { full += t; onText && onText({ text: full }); }
+      }
+    }
+  } catch (e) {
+    if (signal && signal.aborted) throw e;
+    if (full.trim()) return full.trim();
+    throw e;
+  }
+  if (!full.trim()) throw coded("stream_fail", "empty stream");
+  return full.trim();
+}
+async function callGemini(prompt, signal) {
+  const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
+  const p = gemPrompt(prompt);
   const body = { contents: [{ role: "user", parts: [{ text: p }] }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: 3000 } };
   let model = await gemModel(key);
   const t0 = Date.now(), fake = { ok: false, status: 599, json: async () => ({}), clone() { return this; } };
@@ -405,8 +514,9 @@ async function callGemini(prompt, signal) {
   };
   const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
   /* Speed: Google Search and big "thinking" models are slow. Use them only when the question needs fresh facts. */
-  const lastUser = ((prompt.match(/User: ([^\n]*)(?:\n|$)(?![\s\S]*User: )/) || [])[1] || "");
-  const needSearch = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live/i.test(lastUser);
+  const lastUser = lastUserOf(prompt);
+  const needSearch = NEEDSEARCH.test(lastUser);
+  const _unused = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live/i.test(lastUser);
   const models = needSearch
     ? [...new Set([model, "models/gemini-flash-latest", "models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite"])]
     : [...new Set(["models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite", model, "models/gemini-flash-latest"])];
@@ -458,8 +568,13 @@ async function callClaude(prompt, signal) {
   return (j.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
 }
 const sample = async (input, opts) => {
-  const prompt = input[0].content;
-  return { text: ls.get("prov", "gemini") === "claude" ? await callClaude(prompt, opts && opts.signal) : await callGemini(prompt, opts && opts.signal) };
+  const prompt = input[0].content, signal = opts && opts.signal;
+  if (ls.get("prov", "gemini") === "claude") return { text: await callClaude(prompt, signal) };
+  try { return { text: await streamGemini(prompt, signal, opts && opts.onText) }; }
+  catch (e) {
+    if ((signal && signal.aborted) || (e && (e.code === "no_key" || e.name === "AbortError"))) throw e;
+    return { text: await callGemini(prompt, signal) };
+  }
 };
 
 function show(you, reply) {
@@ -470,6 +585,9 @@ function show(you, reply) {
 }
 
 const CAL_RULE = "\n\nCALENDAR: When the user asks you to add, schedule, book or set a reminder or event, confirm it in one short spoken sentence (say the day and time in plain words), and then add one final line in exactly this form with nothing after it: [[EVENT {\"title\":\"...\",\"start\":\"YYYY-MM-DDTHH:MM\",\"end\":\"YYYY-MM-DDTHH:MM\",\"details\":\"...\"}]]  Use the user's local time. If they give no end time, make it one hour after the start. If the day or time is missing, ask one short question instead and add no EVENT line. You cannot read their calendar from this page; if asked what is on it, say so and offer to add events instead.";
+const MEM_RULE = "\n\nMEMORY: You keep a small memory about the user on their phone. When the user tells you something lasting about themselves (name, home city, family, work, likes, routines) or asks you to remember something, add a final line [[REMEMBER {\"fact\":\"short fact in third person\"}]]. When they ask you to forget something, add [[FORGET {\"match\":\"a word from that fact\"}]]. Never store passwords, card numbers, ID numbers or medical details. Do not mention these lines aloud.";
+const TIMER_RULE = "\n\nTIMERS AND ALARMS: Jarvis has a built-in timer. When the user asks for a timer or countdown, confirm in one short sentence and add a final line [[TIMER {\"seconds\":600,\"label\":\"tea\"}]]. When the user asks for an alarm or wake-up at a clock time, confirm in one short sentence, mention it rings only while Jarvis stays open and that they can also tap the calendar button to save a phone reminder, and add a final line [[ALARM {\"time\":\"YYYY-MM-DDTHH:MM\",\"label\":\"wake up\"}]] in their local time. To cancel all timers add [[CANCELTIMERS {}]]. Several of these lines are allowed. Never say a timer is set unless you add the line.";
+function memNote() { const m = getMem(); return m.length ? "\n\nThings you remember about the user (use them naturally, never recite them): " + m.join("; ") + "." : ""; }
 function nowNote() { const d = new Date(); return "\n\nCurrent local date and time: " + d.toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short", hour12: true }) + " (India, UTC+05:30). Use this for words like today and tomorrow."; }
 const CALL_RULE = "\n\nCALLS: When the user asks you to call or phone someone, say in one short sentence that you are getting it ready and they should tap the Call button, then add one final line in exactly this form with nothing after it: [[CALL {\"name\":\"Mom\",\"number\":\"\"}]]  Put the phone number in digits only if the user said a number out loud; otherwise leave it empty. You cannot dial by yourself: the user taps the button and then the phone's dialer opens.";
 const OPEN_RULE = "\n\nOPENING APPS: When the user asks you to open an app or a website, or to play, search or watch something, say in one short sentence that you are getting it ready and they should tap the Open button, then add one final line in exactly this form with nothing after it: [[OPEN {\"app\":\"youtube\",\"query\":\"\"}]]  The app must be one of: youtube, instagram, whatsapp, facebook, maps, spotify, gmail, telegram, x, web. Put what to search for in query (for example a song, a video, a place) or leave it empty to just open the app. For any other site use app web and add a field url with the full https address. You cannot open anything yourself: the user taps the button.";
@@ -566,26 +684,145 @@ function extractEvent(reply) {
   return { clean: reply.replace(m[0], "").trim() || "Done.", ev };
 }
 const encv = (v) => encodeURIComponent(v);
-$("calBtn").onclick = () => {
-  if (!lastEvent) return; const e = lastEvent;
-  /* Android intent: opens the phone's own Calendar app on a new event, already filled in. */
-  location.href = "intent:#Intent;action=android.intent.action.INSERT;type=vnd.android.cursor.dir/event;S.title=" + encv(e.title) + ";S.description=" + encv(e.details) + ";l.beginTime=" + e.st.getTime() + ";l.endTime=" + e.en.getTime() + ";end";
-  note.textContent = "If nothing opened, tap Calendar file instead.";
-};
 $("calIcs").onclick = () => {
   if (!lastEvent) return; const e = lastEvent;
   const fmt = (d) => ymd(d);
   const esc = (t) => String(t).replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
   const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Jarvis//EN", "BEGIN:VEVENT", "UID:" + Date.now() + "@jarvis", "DTSTAMP:" + new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z",
-    "DTSTART;TZID=Asia/Kolkata:" + fmt(e.st), "DTEND;TZID=Asia/Kolkata:" + fmt(e.en), "SUMMARY:" + esc(e.title), "DESCRIPTION:" + esc(e.details), "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    "DTSTART;TZID=Asia/Kolkata:" + fmt(e.st), "DTEND;TZID=Asia/Kolkata:" + fmt(e.en), "SUMMARY:" + esc(e.title), "DESCRIPTION:" + esc(e.details),
+    "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + esc(e.title), "TRIGGER:" + (e.alarm ? "PT0S" : "-PT10M"), "END:VALARM", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" })); a.download = "jarvis-event.ics";
   document.body.appendChild(a); a.click(); a.remove();
-  note.textContent = "Saved jarvis-event.ics. Open it from your Downloads to add it to your calendar.";
+  note.textContent = "Saved jarvis-event.ics. Tap the download notification, or open it from Downloads, and choose your Calendar app.";
 };
 $("calG").onclick = () => {
   if (!lastEvent) return; const e = lastEvent;
   window.open("https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + encv(e.title) + "&dates=" + ymd(e.st) + "/" + ymd(e.en) + "&ctz=Asia%2FKolkata&details=" + encv(e.details), "_blank");
 };
+
+/* ---------- Memory (on this phone only) ---------- */
+function getMem() { try { const a = JSON.parse(ls.get("mem", "[]")); return Array.isArray(a) ? a.filter((x) => typeof x === "string") : []; } catch (e) { return []; } }
+function setMem(a) { ls.set("mem", JSON.stringify(a.slice(-40))); paintMem(); }
+function paintMem() {
+  const box = $("memList"), m = getMem(); box.innerHTML = "";
+  if (!m.length) { const d = document.createElement("div"); d.className = "empty"; d.textContent = "Nothing remembered yet. Try saying: remember that my home city is Chennai."; box.appendChild(d); }
+  m.forEach((f, i) => {
+    const row = document.createElement("div"); row.className = "it";
+    const sp = document.createElement("span"); sp.textContent = f;
+    const b = document.createElement("button"); b.type = "button"; b.textContent = "Remove"; b.onclick = () => { const a = getMem(); a.splice(i, 1); setMem(a); };
+    row.append(sp, b); box.appendChild(row);
+  });
+}
+$("memBtn").onclick = () => { $("memP").hidden = !$("memP").hidden; $("hist").hidden = true; paintMem(); };
+$("memClear").onclick = () => { setMem([]); note.textContent = "Memory cleared."; };
+paintMem();
+
+/* ---------- Timers (run while Jarvis is open) ---------- */
+let actx = null;
+function beepOnce() {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume();
+    [0, 0.35, 0.7].forEach((t) => { const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = 880; o.connect(g); g.connect(actx.destination); const n = actx.currentTime + t; g.gain.setValueAtTime(0.0001, n); g.gain.exponentialRampToValueAtTime(0.4, n + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, n + 0.28); o.start(n); o.stop(n + 0.3); });
+  } catch (e) {}
+}
+addEventListener("pointerdown", () => { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) {} }, { once: true, capture: true });
+const getT = () => { try { const a = JSON.parse(ls.get("timers", "[]")); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+const setT = (a) => ls.set("timers", JSON.stringify(a));
+const fmtLeft = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s2 = t % 60; return (h ? h + ":" + pad2(m) : m) + ":" + pad2(s2); };
+function addTimer(sec, label, endAt) {
+  const end = endAt || Date.now() + Math.round(sec * 1000), a = getT();
+  a.push({ id: Date.now() + Math.random(), end, label: String(label || "Timer").slice(0, 40) }); setT(a); paintTimers();
+  if ("Notification" in window && Notification.permission === "default") $("alertRow").hidden = false;
+}
+function ring(t, missed) {
+  const what = /^Alarm/i.test(t.label) ? t.label : "Timer " + (t.label && t.label !== "Timer" ? t.label + " " : "") + "finished";
+  const line = missed ? what + " (it went off while Jarvis was closed)" : what;
+  note.textContent = line; beepOnce(); try { navigator.vibrate && navigator.vibrate([400, 200, 400, 200, 400]); } catch (e) {}
+  try {
+    if ("Notification" in window && Notification.permission === "granted") {
+      if (navigator.serviceWorker && navigator.serviceWorker.ready) navigator.serviceWorker.ready.then((r) => r.showNotification("Jarvis", { body: line, vibrate: [300, 150, 300] })).catch(() => { try { new Notification("Jarvis", { body: line }); } catch (e) {} });
+      else new Notification("Jarvis", { body: line });
+    }
+  } catch (e) {}
+  if (!busy && voiceOn) setTimeout(() => speak(line), 1100);
+}
+function paintTimers() {
+  const box = $("timers"), a = getT(); box.innerHTML = "";
+  a.forEach((t) => {
+    const d = document.createElement("div"); d.className = "tm";
+    const l = document.createElement("span"); l.textContent = t.label + " ";
+    const b = document.createElement("b"); b.dataset.end = t.end; b.textContent = fmtLeft(t.end - Date.now());
+    const x = document.createElement("button"); x.type = "button"; x.textContent = "Stop"; x.onclick = () => { setT(getT().filter((y) => y.id !== t.id)); paintTimers(); };
+    d.append(l, b, x); box.appendChild(d);
+  });
+}
+function tickTimers() {
+  const a = getT(), now = Date.now(), due = a.filter((t) => t.end <= now);
+  if (due.length) { setT(a.filter((t) => t.end > now)); paintTimers(); due.forEach((t) => ring(t, now - t.end > 5000)); }
+  document.querySelectorAll("#timers b").forEach((b) => { b.textContent = fmtLeft(+b.dataset.end - now); });
+}
+setInterval(tickTimers, 500);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) tickTimers(); });
+$("alertBtn").onclick = async () => { try { await Notification.requestPermission(); } catch (e) {} $("alertRow").hidden = true; note.textContent = Notification.permission === "granted" ? "Timer alerts allowed." : "Alerts not allowed. Jarvis will still beep and speak while open."; };
+paintTimers(); tickTimers();
+
+/* Handles REMEMBER / FORGET / TIMER / ALARM / CANCELTIMERS lines, returns the reply with them removed */
+function extractAll(reply) {
+  const notes = []; let alarmEv = null;
+  const clean = reply.replace(/\[\[(REMEMBER|FORGET|TIMER|ALARM|CANCELTIMERS)\s*(\{[\s\S]*?\})?\s*\]\]/g, (all, name, js) => {
+    let o = {}; try { o = js ? JSON.parse(js) : {}; } catch (e) {}
+    if (name === "REMEMBER") {
+      const f = String(o.fact || "").replace(/\s+/g, " ").trim().slice(0, 140);
+      if (f) { const a = getMem(); if (!a.some((x) => x.toLowerCase() === f.toLowerCase())) { a.push(f); setMem(a); notes.push("Remembered: " + f); } }
+    } else if (name === "FORGET") {
+      const k = String(o.match || "").toLowerCase().trim();
+      if (k) { const a = getMem(), b = a.filter((x) => !x.toLowerCase().includes(k)); if (b.length !== a.length) { setMem(b); notes.push("Forgot " + (a.length - b.length) + " item" + (a.length - b.length > 1 ? "s" : "")); } }
+    } else if (name === "TIMER") {
+      const sec = Math.round(Number(o.seconds)); if (sec >= 1 && sec <= 86400) { addTimer(sec, o.label || "Timer"); notes.push("Timer started: " + fmtLeft(sec * 1000)); }
+    } else if (name === "ALARM") {
+      const st = parseWhen(String(o.time || "")); if (st && st.getTime() > Date.now()) {
+        const label = String(o.label || "Alarm").slice(0, 40);
+        addTimer(0, "Alarm: " + label, st.getTime());
+        alarmEv = { title: label, details: "Set by Jarvis", st, en: new Date(st.getTime() + 15 * 6e4), alarm: true };
+        notes.push("Alarm set for " + st.toLocaleString("en-IN", { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true }));
+      }
+    } else if (name === "CANCELTIMERS") { setT([]); paintTimers(); notes.push("Timers cleared"); }
+    return "";
+  }).trim();
+  return { clean: clean || "Done.", notes, alarmEv };
+}
+
+/* ---------- Saved chats ---------- */
+const getChats = () => { try { const a = JSON.parse(ls.get("chats", "[]")); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+let curChat = null;
+function saveChat() {
+  if (!history.length) return;
+  const a = getChats(); let c = a.find((x) => x.id === curChat);
+  if (!c) { c = { id: curChat = Date.now(), title: (history.find((m) => m.role === "user") || { content: "Chat" }).content.slice(0, 50), msgs: [] }; a.unshift(c); }
+  c.ts = Date.now(); c.msgs = history.slice(-40);
+  ls.set("chats", JSON.stringify(a.slice(0, 30))); paintHist();
+}
+function renderChat(msgs) {
+  say.innerHTML = "";
+  msgs.forEach((m) => { const d = document.createElement("div"); d.className = m.role === "user" ? "you" : "jarvis"; d.textContent = (m.role === "user" ? "You: " : "") + m.content; say.appendChild(d); });
+  say.scrollTop = say.scrollHeight;
+}
+function paintHist() {
+  const box = $("histList"), a = getChats(); box.innerHTML = "";
+  if (!a.length) { const d = document.createElement("div"); d.className = "empty"; d.textContent = "No saved chats yet. Your conversations are saved here automatically."; box.appendChild(d); }
+  a.forEach((c) => {
+    const row = document.createElement("div"); row.className = "it";
+    const sp = document.createElement("span"); sp.style.cursor = "pointer"; sp.textContent = c.title; const sm = document.createElement("small"); sm.textContent = new Date(c.ts).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true }) + " · " + Math.ceil(c.msgs.length / 2) + " messages"; sp.appendChild(sm);
+    sp.onclick = () => { try { speechSynthesis.cancel(); } catch (e) {} history = c.msgs.slice(); curChat = c.id; renderChat(history); $("hist").hidden = true; setState("idle"); note.textContent = "Chat loaded. Keep talking to continue it."; };
+    const b = document.createElement("button"); b.type = "button"; b.textContent = "Delete"; b.onclick = () => { ls.set("chats", JSON.stringify(getChats().filter((x) => x.id !== c.id))); if (curChat === c.id) curChat = null; paintHist(); };
+    row.append(sp, b); box.appendChild(row);
+  });
+}
+$("histBtn").onclick = () => { $("hist").hidden = !$("hist").hidden; $("memP").hidden = true; paintHist(); };
+$("newChat").onclick = () => { try { speechSynthesis.cancel(); } catch (e) {} history = []; curChat = null; say.innerHTML = ""; const d = document.createElement("div"); d.className = "jarvis"; d.textContent = "New chat. What can I do for you?"; say.appendChild(d); $("hist").hidden = true; setState("idle"); note.textContent = ""; };
+$("histClear").onclick = () => { ls.set("chats", "[]"); curChat = null; paintHist(); note.textContent = "Saved chats deleted."; };
+paintHist();
+const visible = (t) => String(t || "").replace(/\[\[[\s\S]*$/, "").trim();
 let lastReply = "";
 async function ask(text) {
   text = text.trim(); if (!text || busy) return;
@@ -601,20 +838,24 @@ async function ask(text) {
     else note.textContent = "Could not get your location, answering without it.";
   }
   const turns = history.slice(-12);
-  const input = [{ role: "user", content: SYSTEM + CAL_RULE + CALL_RULE + OPEN_RULE + nowNote() + locNote + personaNote() + marketNote() + "\n\nConversation so far follows. Reply only as Jarvis to the last user line.\n\n" +
+  const input = [{ role: "user", content: SYSTEM + CAL_RULE + CALL_RULE + OPEN_RULE + MEM_RULE + TIMER_RULE + memNote() + nowNote() + locNote + personaNote() + marketNote() + "\n\nConversation so far follows. Reply only as Jarvis to the last user line.\n\n" +
     turns.map((m) => (m.role === "user" ? "User: " : "Jarvis: ") + m.content).join("\n") }];
   ctrl = new AbortController();
+  const live = makeLive();
   const slowT = setTimeout(() => { if (busy && !note.textContent) note.textContent = "Still thinking... slow connection."; }, 7000);
   try {
-    const r = await sample(input, { cache: false, signal: ctrl.signal, modelTier: "quick", onText: ({ text: t }) => { out.textContent = t || "…"; } });
-    const got0 = extractEvent((r.text || "").trim() || "I have nothing to add."), got1 = extractCall(got0.clean), got1b = extractOpen(got1.clean), got = { clean: got1b.clean, ev: got0.ev }; const reply = got.clean; lastEvent = got.ev; lastCall = got1.call;
+    const r = await sample(input, { cache: false, signal: ctrl.signal, modelTier: "quick", onText: ({ text: t }) => { out.textContent = visible(t) || "…"; if (live) live.feed(t, false); } });
+    const act = extractAll((r.text || "").trim() || "I have nothing to add.");
+    const got0 = extractEvent(act.clean), got1 = extractCall(got0.clean), got1b = extractOpen(got1.clean), got = { clean: got1b.clean, ev: got0.ev }; const reply = got.clean; lastEvent = got.ev || act.alarmEv; lastCall = got1.call;
     lastOpen = got1b.open; $("openRow").hidden = !lastOpen; if (lastOpen) $("openBtn").textContent = "Open " + (lastOpen.app === "web" ? "website" : APPS[lastOpen.app].name) + (lastOpen.query ? ": " + lastOpen.query : "");
     $("callRow").hidden = !lastCall; if (lastCall) $("callBtn").textContent = "Call " + (lastCall.name || lastCall.number);
-    $("calRow").hidden = !lastEvent; if (lastEvent) $("calBtn").textContent = "Add to phone calendar: " + lastEvent.title + ", " + lastEvent.st.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
+    $("calRow").hidden = !lastEvent; if (lastEvent) $("calIcs").textContent = (lastEvent.alarm ? "Save alarm reminder: " : "Add to phone calendar: ") + lastEvent.title + ", " + lastEvent.st.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
     out.textContent = reply; history.push({ role: "assistant", content: reply }); lastReply = reply; $("shareRow").hidden = false;
-    speak(reply);
+    if (act.notes.length) note.textContent = act.notes.join(" · ");
+    saveChat();
+    if (live) live.feed(reply, true); else speak(reply);
   } catch (e) {
-    history.pop(); setState("idle"); note.textContent = String((e && e.message) || "").slice(0, 200);
+    if (live) live.cancel(); history.pop(); setState("idle"); note.textContent = String((e && e.message) || "").slice(0, 200);
     out.textContent = e?.code === "not_granted" ? "Permission to use Claude was declined." : (e?.code === "rate_limited" || e?.code === "timeout" || e?.code === "no_key" || e?.code === "empty") ? (e.message || "Try again in a moment.") : "That did not go through. Try again."; note.textContent = String((e && e.message) || e).slice(0, 200);
   } finally { clearTimeout(slowT); busy = false; ctrl = null; }
 }
