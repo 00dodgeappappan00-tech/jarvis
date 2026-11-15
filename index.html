@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 16 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 17 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -75,6 +75,9 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
 
 <div class="say" id="say" aria-live="polite">
   <div class="jarvis">Hey creator, JARVIS is ignited.</div>
+</div>
+<div class="linkrow" id="openRow" hidden>
+  <button type="button" class="linkbtn on" id="openBtn">Open</button>
 </div>
 <div class="linkrow" id="callRow" hidden>
   <button type="button" class="linkbtn on" id="callBtn">Call</button>
@@ -469,6 +472,42 @@ function show(you, reply) {
 const CAL_RULE = "\n\nCALENDAR: When the user asks you to add, schedule, book or set a reminder or event, confirm it in one short spoken sentence (say the day and time in plain words), and then add one final line in exactly this form with nothing after it: [[EVENT {\"title\":\"...\",\"start\":\"YYYY-MM-DDTHH:MM\",\"end\":\"YYYY-MM-DDTHH:MM\",\"details\":\"...\"}]]  Use the user's local time. If they give no end time, make it one hour after the start. If the day or time is missing, ask one short question instead and add no EVENT line. You cannot read their calendar from this page; if asked what is on it, say so and offer to add events instead.";
 function nowNote() { const d = new Date(); return "\n\nCurrent local date and time: " + d.toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short", hour12: true }) + " (India, UTC+05:30). Use this for words like today and tomorrow."; }
 const CALL_RULE = "\n\nCALLS: When the user asks you to call or phone someone, say in one short sentence that you are getting it ready and they should tap the Call button, then add one final line in exactly this form with nothing after it: [[CALL {\"name\":\"Mom\",\"number\":\"\"}]]  Put the phone number in digits only if the user said a number out loud; otherwise leave it empty. You cannot dial by yourself: the user taps the button and then the phone's dialer opens.";
+const OPEN_RULE = "\n\nOPENING APPS: When the user asks you to open an app or a website, or to play, search or watch something, say in one short sentence that you are getting it ready and they should tap the Open button, then add one final line in exactly this form with nothing after it: [[OPEN {\"app\":\"youtube\",\"query\":\"\"}]]  The app must be one of: youtube, instagram, whatsapp, facebook, maps, spotify, gmail, telegram, x, web. Put what to search for in query (for example a song, a video, a place) or leave it empty to just open the app. For any other site use app web and add a field url with the full https address. You cannot open anything yourself: the user taps the button.";
+const APPS = {
+  youtube:   { name: "YouTube",   pkg: "com.google.android.youtube", home: "https://www.youtube.com/", search: (q) => "https://www.youtube.com/results?search_query=" + encodeURIComponent(q) },
+  instagram: { name: "Instagram", pkg: "com.instagram.android", home: "https://www.instagram.com/" },
+  whatsapp:  { name: "WhatsApp",  pkg: "com.whatsapp", home: "https://wa.me/" },
+  facebook:  { name: "Facebook",  pkg: "com.facebook.katana", home: "https://www.facebook.com/" },
+  maps:      { name: "Maps",      pkg: "com.google.android.apps.maps", home: "https://www.google.com/maps", search: (q) => "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q) },
+  spotify:   { name: "Spotify",   pkg: "com.spotify.music", home: "https://open.spotify.com/", search: (q) => "https://open.spotify.com/search/" + encodeURIComponent(q) },
+  gmail:     { name: "Gmail",     pkg: "com.google.android.gm", home: "https://mail.google.com/" },
+  telegram:  { name: "Telegram",  pkg: "org.telegram.messenger", home: "https://t.me/" },
+  x:         { name: "X",         pkg: "com.twitter.android", home: "https://x.com/" },
+};
+let lastOpen = null;
+function extractOpen(reply) {
+  const m = /\[\[OPEN\s*(\{[\s\S]*?\})\s*\]\]/.exec(reply);
+  if (!m) return { clean: reply, open: null };
+  let open = null;
+  try {
+    const o = JSON.parse(m[1]), app = String(o.app || "").toLowerCase(), q = String(o.query || "").trim();
+    if (APPS[app]) open = { app, query: q };
+    else if (app === "web" && /^https:\/\/[^\s]+$/i.test(String(o.url || ""))) open = { app: "web", url: String(o.url) };
+  } catch (e) {}
+  return { clean: reply.replace(m[0], "").trim() || "Done.", open };
+}
+function go(u) { location.href = u; }
+function appUrl(o) {
+  if (o.app === "web") return { url: o.url, pkg: "" };
+  const a = APPS[o.app];
+  return { url: o.query && a.search ? a.search(o.query) : a.home, pkg: a.pkg };
+}
+$("openBtn").onclick = () => {
+  if (!lastOpen) return; const t = appUrl(lastOpen);
+  if (!t.pkg) { go(t.url); return; }
+  /* Opens the real app if installed, otherwise the website in Chrome. */
+  go("intent://" + t.url.replace(/^https:\/\//, "") + "#Intent;scheme=https;package=" + t.pkg + ";S.browser_fallback_url=" + encodeURIComponent(t.url) + ";end");
+};
 let lastCall = null;
 function extractCall(reply) {
   const m = /\[\[CALL\s*(\{[\s\S]*?\})\s*\]\]/.exec(reply);
@@ -552,7 +591,7 @@ async function ask(text) {
   text = text.trim(); if (!text || busy) return;
   if (!sample) { note.textContent = "Claude is not available in this view."; return; }
   busy = true; try { speechSynthesis.cancel(); } catch (e) {}
-  msg.value = ""; setState("thinking"); note.textContent = ""; $("calRow").hidden = true; lastEvent = null; $("callRow").hidden = true; lastCall = null;
+  msg.value = ""; setState("thinking"); note.textContent = ""; $("calRow").hidden = true; lastEvent = null; $("callRow").hidden = true; lastCall = null; $("openRow").hidden = true; lastOpen = null;
   const out = show(text, "…");
   history.push({ role: "user", content: text });
   let locNote = "";
@@ -562,13 +601,14 @@ async function ask(text) {
     else note.textContent = "Could not get your location, answering without it.";
   }
   const turns = history.slice(-12);
-  const input = [{ role: "user", content: SYSTEM + CAL_RULE + CALL_RULE + nowNote() + locNote + personaNote() + marketNote() + "\n\nConversation so far follows. Reply only as Jarvis to the last user line.\n\n" +
+  const input = [{ role: "user", content: SYSTEM + CAL_RULE + CALL_RULE + OPEN_RULE + nowNote() + locNote + personaNote() + marketNote() + "\n\nConversation so far follows. Reply only as Jarvis to the last user line.\n\n" +
     turns.map((m) => (m.role === "user" ? "User: " : "Jarvis: ") + m.content).join("\n") }];
   ctrl = new AbortController();
   const slowT = setTimeout(() => { if (busy && !note.textContent) note.textContent = "Still thinking... slow connection."; }, 7000);
   try {
     const r = await sample(input, { cache: false, signal: ctrl.signal, modelTier: "quick", onText: ({ text: t }) => { out.textContent = t || "…"; } });
-    const got0 = extractEvent((r.text || "").trim() || "I have nothing to add."), got1 = extractCall(got0.clean), got = { clean: got1.clean, ev: got0.ev }; const reply = got.clean; lastEvent = got.ev; lastCall = got1.call;
+    const got0 = extractEvent((r.text || "").trim() || "I have nothing to add."), got1 = extractCall(got0.clean), got1b = extractOpen(got1.clean), got = { clean: got1b.clean, ev: got0.ev }; const reply = got.clean; lastEvent = got.ev; lastCall = got1.call;
+    lastOpen = got1b.open; $("openRow").hidden = !lastOpen; if (lastOpen) $("openBtn").textContent = "Open " + (lastOpen.app === "web" ? "website" : APPS[lastOpen.app].name) + (lastOpen.query ? ": " + lastOpen.query : "");
     $("callRow").hidden = !lastCall; if (lastCall) $("callBtn").textContent = "Call " + (lastCall.name || lastCall.number);
     $("calRow").hidden = !lastEvent; if (lastEvent) $("calBtn").textContent = "Add to phone calendar: " + lastEvent.title + ", " + lastEvent.st.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
     out.textContent = reply; history.push({ role: "assistant", content: reply }); lastReply = reply; $("shareRow").hidden = false;
