@@ -912,7 +912,7 @@ function localCommand(t) {
   if (/^(turn )?(the )?(music |volume )?(up|louder)( the (music|volume))?$|^volume up$|^louder$/.test(x)) { userVol = Math.min(1, userVol + 0.2); applyVol(); return "Louder."; }
   if (/^(turn )?(the )?(music |volume )?(down|quieter|lower)( the (music|volume))?$|^volume down$|^quieter$/.test(x)) { userVol = Math.max(0.05, userVol - 0.2); applyVol(); return "Quieter."; }
   if (/^shuffle( on| the music)?$/.test(x)) { shuffle = true; paintMusic(); return "Shuffle is on."; }
-  if ((m = /^(?:change |set |make )?(?:the )?(?:ring|rings|theme|ring theme|colou?r)(?: theme)?(?: to)? ?(blue|red|gold|golden|yellow|green|purple|violet|ice|white)$/.exec(x)) || (m = /^(?:change|set|make)(?: the)? (?:ring|rings|theme|ring theme|colou?r)(?: theme)? to (blue|red|gold|golden|yellow|green|purple|violet|ice|white)$/.exec(x))) {
+  if (/\b(rings?|theme)\b/.test(x) && x.split(" ").length <= 9 && /^(change|set|make|turn|switch|use|ring|theme)/.test(x) && (m = /\b(blue|red|gold|golden|yellow|green|purple|violet|ice|white)\b/.exec(x))) {
     const map = { golden: "gold", yellow: "gold", violet: "purple", white: "ice" }, n = map[m[1]] || m[1]; setRing(n, false); return "Ring theme changed to " + n + ".";
   }
   if (tracks.length && (m = /^play (.{2,60})$/.exec(x)) && !/^(music|songs?|some music|my music)$/.test(m[1])) {
