@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 24 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 25 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -967,6 +967,13 @@ function localCommand(t) {
   const x = t.toLowerCase().replace(/[.!?,]/g, "").trim();
   const need = "I have no songs yet. Tap Music, then Choose songs.";
   let m;
+  /* Time and date: answered instantly from the phone's clock */
+  { const w = x.split(" ").length, d = new Date();
+    const tm = d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true }), dt = d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    if (w <= 8 && /^(?:what'?s|what is|whats|tell me|say|show me|jarvis)?\s*(?:the )?(?:current |present )?time(?: is it| it is)?(?: now| right now| today| please)?$|^what time is it(?: now| right now)?$|^time please$|^what is the time(?: now| right now)?$/.test(x)) return "It is " + tm + ".";
+    if (w <= 8 && /^(?:what'?s|what is|whats|tell me|say)?\s*(?:the )?(?:today'?s |current )?(?:date|day)(?: is it| it is)?(?: today| now)?$|^what day is it(?: today)?$|^what is today'?s date$|^what'?s today'?s date$/.test(x)) return "Today is " + dt + ".";
+    if (/^(?:what'?s|what is|tell me)? ?(?:the )?(?:date and time|time and date)(?: now| today)?$/.test(x)) return "It is " + tm + " on " + dt + ".";
+  }
   if ((m = /^(?:please )?add (.{2,80}?) to (?:my |the )?(?:to ?do |todo |shopping |grocery )?(?:list|to ?do)$/.exec(x))) return addTodo(m[1]) ? "Added " + m[1] + " to your list." : "That is already on your list.";
   if ((m = /^(?:please )?(?:remove|delete) (.{2,80}?) from (?:my |the )?(?:to ?do |todo |shopping |grocery )?list$/.exec(x))) return removeTodo(m[1]) ? "Removed " + m[1] + "." : "I could not find that on your list.";
   if ((m = /^(?:please )?(?:tick off|check off|cross off|mark) (.{2,80}?)(?: as done| done| off)?$/.exec(x)) && !/(rings?|theme|mode)/.test(m[1])) return doneTodo(m[1]) ? "Ticked off " + m[1] + "." : null;
