@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 21 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 22 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -13,8 +13,12 @@
   --font-display: "Space Grotesk", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --hover: #28496a;
   color-scheme: dark;
 }
+body[data-mode="light"] { --bg: #eef4fb; --panel: #ffffff; --line: #bfd1e3; --fg: #0b1b2b; --dim: #4a647c; --hover: #d3e2f1; color-scheme: light; }
+body[data-mode="light"] .stage { background: radial-gradient(circle at 50% 50%, #061a33, #02060f 75%); border-radius: 28px; }
+body[data-mode="light"] #status i { background: #7f9bb3; }
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body);
@@ -40,7 +44,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .bar input { flex: 1; min-width: 0; background: none; border: 0; color: var(--fg); font: inherit; font-size: 15px; outline: none; }
 .bar input::placeholder { color: var(--dim); }
 button { font: inherit; cursor: pointer; border: 0; border-radius: 999px; height: 40px; min-width: 40px; padding: 0 14px; background: var(--line); color: var(--fg); }
-button:hover { background: #28496a; }
+button:hover { background: var(--hover); }
 button:focus-visible, .bar:focus-within { outline: 2px solid var(--glow); outline-offset: 2px; }
 button.go { background: var(--ember); color: #04121f; font-weight: 600; }
 button.go:hover { background: var(--glow); }
@@ -135,10 +139,16 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <button type="button" class="linkbtn" id="tuneBtn">Change voice</button>
 </div>
 <div class="tune" id="ringP" hidden>
+  <div class="hint">Ring colour</div>
   <div class="row" id="ringOpts">
     <button type="button" data-r="blue">Blue</button><button type="button" data-r="red">Red</button><button type="button" data-r="gold">Gold</button><button type="button" data-r="green">Green</button>
     <button type="button" data-r="purple">Purple</button><button type="button" data-r="ice">Ice</button>
   </div>
+  <div class="hint">Ring shape</div>
+  <div class="row" id="shapeOpts">
+    <button type="button" data-s="classic">Classic</button><button type="button" data-s="minimal">Minimal</button><button type="button" data-s="radar">Radar</button><button type="button" data-s="pulse">Pulse</button>
+  </div>
+  <button type="button" class="linkbtn" id="modeBtn">Light mode: Off</button>
 </div>
 <div class="tune" id="musP" hidden>
   <div class="hint">Play songs saved on your phone. Choose them once each time you open Jarvis (Chrome does not let a web app keep your files). Then say "play music", "pause", "next song", "volume up", or "play" and a song name. Music goes quiet while Jarvis listens or talks.</div>
@@ -178,6 +188,9 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
     <button type="button" data-p="robot">Robot</button>
     <button type="button" data-p="gravel">Gravel</button>
     <button type="button" data-p="night">Night</button>
+    <button type="button" data-p="cheerful">Cheerful</button>
+    <button type="button" data-p="narrator">Narrator</button>
+    <button type="button" data-p="chipmunk">Chipmunk</button>
     <button type="button" class="go" id="testV">Test voice</button>
   </div>
 
@@ -217,7 +230,7 @@ function glowArc(mx, my, r, a0, a1, w, col, blur) {
   if (blur > 6) { cx.globalAlpha = 0.22; cx.lineWidth = w + blur * 0.45; cx.stroke(); cx.globalAlpha = 1; }
   cx.lineWidth = w; cx.stroke();
 }
-let lastDraw = 0;
+let RS = "classic", lastDraw = 0;
 function frame(now) {
   if (document.hidden || now - lastDraw < 30) { requestAnimationFrame(frame); return; }
   lastDraw = now;
@@ -240,14 +253,14 @@ function frame(now) {
     glowArc(mx, my, R, s, s + 0.35 + k * 0.1, 2.6, CY(0.9), 12);
   }
   // dotted data ring, brightness rolling around it
-  const rd = R * 0.9, nd = 110;
+  const rd = R * 0.9, nd = RS === "classic" ? 110 : 0;
   for (let i = 0; i < nd; i++) {
     const t = (i / nd) * TAU - ang * 0.35, v = 0.5 + 0.5 * Math.sin(i * 0.5 - now / 400);
     const x = mx + Math.cos(t) * rd, y = my + Math.sin(t) * rd;
     cx.beginPath(); cx.arc(x, y, 1.1 + v * 1.2, 0, TAU); cx.fillStyle = CY(0.25 + v * 0.65); cx.fill();
   }
   // block ring: a half-circle of little rounded cells, like a readout
-  const rb = R * 0.78, nb = 46, bs = ang * 0.45;
+  const rb = R * 0.78, nb = RS === "classic" ? 46 : 0, bs = ang * 0.45;
   for (let i = 0; i < nb; i++) {
     const t = bs + (i / nb) * Math.PI * 1.25, v = 0.35 + 0.65 * Math.abs(Math.sin(i * 0.9 + now / 500));
     cx.save(); cx.translate(mx + Math.cos(t) * rb, my + Math.sin(t) * rb); cx.rotate(t + Math.PI / 2);
@@ -255,12 +268,22 @@ function frame(now) {
   }
   // mid ring with two thick glowing segments
   const rm = R * 0.68;
-  glowArc(mx, my, rm, 0, TAU, 1, BL(0.5), 4);
-  glowArc(mx, my, rm, -ang * 0.7, -ang * 0.7 + 1.9, 5, BL(0.85), 16);
-  glowArc(mx, my, rm, -ang * 0.7 + 3.3, -ang * 0.7 + 4.4, 3, CY(0.9), 12);
+  if (RS === "classic") {
+    glowArc(mx, my, rm, 0, TAU, 1, BL(0.5), 4);
+    glowArc(mx, my, rm, -ang * 0.7, -ang * 0.7 + 1.9, 5, BL(0.85), 16);
+    glowArc(mx, my, rm, -ang * 0.7 + 3.3, -ang * 0.7 + 4.4, 3, CY(0.9), 12);
+  } else if (RS === "radar") {
+    for (const k of [0.62, 0.74, 0.86]) glowArc(mx, my, R * k, 0, TAU, 1, BL(0.35), 4);
+    for (let k = 0; k < 28; k++) { const a1 = ang * 2.2 - k * 0.045; glowArc(mx, my, R * 0.86, a1 - 0.05, a1, 1.6, CY(0.7 * (1 - k / 28)), 0); }
+    const bx = mx + Math.cos(ang * 2.2) * R * 0.86, by = my + Math.sin(ang * 2.2) * R * 0.86;
+    cx.beginPath(); cx.moveTo(mx, my); cx.lineTo(bx, by); cx.strokeStyle = CY(0.6); cx.lineWidth = 1.2; cx.stroke();
+    cx.beginPath(); cx.arc(bx, by, 3.2, 0, TAU); cx.fillStyle = CY(0.95); cx.fill();
+  } else if (RS === "pulse") {
+    for (let k = 0; k < 3; k++) { const ph = ((now / 1600 + k / 3) % 1), rr = R * (0.52 + ph * 0.46); glowArc(mx, my, rr, 0, TAU, 1.6, CY(0.7 * (1 - ph)), 6); }
+  }
   // fine tick ring
   const rt = R * 0.6;
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < (RS === "classic" || RS === "radar" ? 150 : 0); i++) {
     const t = (i / 150) * TAU + ang * 0.6, l = i % 5 === 0 ? 9 : 4.5;
     cx.beginPath(); cx.moveTo(mx + Math.cos(t) * rt, my + Math.sin(t) * rt); cx.lineTo(mx + Math.cos(t) * (rt - l), my + Math.sin(t) * (rt - l));
     cx.strokeStyle = i % 5 === 0 ? CY(0.7) : BL(0.55); cx.lineWidth = 1; cx.stroke();
@@ -341,6 +364,9 @@ const PRESETS = {
   commander: { pitch: 0.6, rate: 0.88, re: /google uk english male|daniel|david|alex|#male|\bmale\b/i, avoid: /female/i },
   robot: { pitch: 0.7, rate: 1.1, re: null },
   gravel: { pitch: 0.55, rate: 0.85, re: /google uk english male|daniel|david|alex|#male|\bmale\b/i, avoid: /female/i },
+  cheerful: { pitch: 1.3, rate: 1.1, re: /female|samantha|zira|susan|karen|moira|tessa|fiona|victoria|hazel|aria|jenny|heera|neerja|priya|google (us|uk) english(?! male)/i },
+  narrator: { pitch: 0.8, rate: 0.9, re: /google uk english male|daniel|arthur|oliver|david/i, avoid: /female/i },
+  chipmunk: { pitch: 1.9, rate: 1.2, re: null },
   night: { pitch: 0.45, rate: 0.8, re: /google uk english male|daniel|david|alex|#male|\bmale\b/i, avoid: /female/i }
 };
 function markPreset() { const cur = ls.get("vPreset", "jarvis"); document.querySelectorAll("#presets button").forEach((b) => b.classList.toggle("on", b.dataset.p === cur)); }
@@ -354,7 +380,7 @@ function applyPreset(name) {
 }
 $("presets").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) applyPreset(b.dataset.p); });
 markPreset();
-function personaNote() { const pv = ls.get("vPreset", "jarvis"); if (pv === "gravel") return "\n\nSpeaking style: a deep, gruff, laid-back tough guy who is loyal and protective, speaks in short, low-key sentences, and values family and friends. Keep every answer accurate."; if (pv === "night") return "\n\nSpeaking style: a dark, brooding, terse night guardian. Very short, serious sentences, dry and intense, calm under pressure. Never quote any film. Keep every answer accurate."; return ls.get("vPreset", "jarvis") === "commander" ? "\n\nSpeaking style: a noble, steady leader with a deep, resonant presence. Calm gravity, short deliberate sentences, warm and loyal toward the user, never boastful. This is only a manner of speaking; keep every answer accurate." : ls.get("vPreset", "jarvis") === "robot" ? "\n\nSpeaking style: a precise, slightly mechanical robot assistant, formal and concise. Keep every answer accurate." : ""; }
+function personaNote() { const pv = ls.get("vPreset", "jarvis"); if (pv === "cheerful") return "\n\nSpeaking style: upbeat, friendly and encouraging, with a smile in every sentence. Keep every answer accurate."; if (pv === "narrator") return "\n\nSpeaking style: a calm, warm storyteller who explains things like a documentary narrator. Keep every answer accurate."; if (pv === "chipmunk") return "\n\nSpeaking style: playful, bubbly and a little silly, but short and clear. Keep every answer accurate."; if (pv === "gravel") return "\n\nSpeaking style: a deep, gruff, laid-back tough guy who is loyal and protective, speaks in short, low-key sentences, and values family and friends. Keep every answer accurate."; if (pv === "night") return "\n\nSpeaking style: a dark, brooding, terse night guardian. Very short, serious sentences, dry and intense, calm under pressure. Never quote any film. Keep every answer accurate."; return ls.get("vPreset", "jarvis") === "commander" ? "\n\nSpeaking style: a noble, steady leader with a deep, resonant presence. Calm gravity, short deliberate sentences, warm and loyal toward the user, never boastful. This is only a manner of speaking; keep every answer accurate." : ls.get("vPreset", "jarvis") === "robot" ? "\n\nSpeaking style: a precise, slightly mechanical robot assistant, formal and concise. Keep every answer accurate." : ""; }
 $("testV").onclick = () => testVoice();
 function testVoice() { voiceOn = true; $("mute").textContent = "Voice on"; $("mute").setAttribute("aria-pressed", "false"); speak("All systems are online. How do I sound?"); }
 let speakRun = 0;
@@ -856,6 +882,18 @@ function paintWeb() { const on = webAlways(); $("webBtn").textContent = "Web sea
 $("webBtn").onclick = () => { ls.set("webAlways", webAlways() ? "0" : "1"); paintWeb(); note.textContent = webAlways() ? "Jarvis now checks Google for every question. Answers are up to date but a few seconds slower." : "Auto: Jarvis searches Google for news, prices, sports and anything recent, and answers the rest instantly."; };
 paintWeb();
 /* ---------- Ring theme ---------- */
+function setShape(n, say_) {
+  if (!["classic", "minimal", "radar", "pulse"].includes(n)) n = "classic";
+  RS = n; ls.set("rshape", n); document.querySelectorAll("#shapeOpts button").forEach((b) => b.classList.toggle("on", b.dataset.s === n));
+  if (say_) note.textContent = "Ring shape: " + n + ".";
+}
+$("shapeOpts").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setShape(b.dataset.s, true); });
+function setMode(light, say_) {
+  document.body.dataset.mode = light ? "light" : "dark"; ls.set("mode", light ? "light" : "dark");
+  $("modeBtn").textContent = "Light mode: " + (light ? "On" : "Off"); $("modeBtn").classList.toggle("on", light);
+  if (say_) note.textContent = light ? "Light mode on." : "Dark mode on.";
+}
+$("modeBtn").onclick = () => setMode(document.body.dataset.mode !== "light", true);
 function setRing(name, say_) {
   if (!THEMES[name]) name = "blue";
   TH = THEMES[name]; ls.set("ring", name);
@@ -865,7 +903,7 @@ function setRing(name, say_) {
 }
 $("ringOpts").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setRing(b.dataset.r, true); });
 $("ringBtn").onclick = () => { $("ringP").hidden = !$("ringP").hidden; $("musP").hidden = true; $("memP").hidden = true; $("hist").hidden = true; };
-setRing(ls.get("ring", "blue"), false);
+setRing(ls.get("ring", "blue"), false); setShape(ls.get("rshape", "classic"), false); setMode(ls.get("mode", "dark") === "light", false);
 
 /* ---------- Music from this phone ---------- */
 const player = new Audio(); player.preload = "auto";
@@ -920,6 +958,9 @@ function localCommand(t) {
   if (/\b(rings?|theme)\b/.test(x) && x.split(" ").length <= 9 && /^(change|set|make|turn|switch|use|ring|theme)/.test(x) && (m = /\b(blue|red|gold|golden|yellow|green|purple|violet|ice|white)\b/.exec(x))) {
     const map = { golden: "gold", yellow: "gold", violet: "purple", white: "ice" }, n = map[m[1]] || m[1]; setRing(n, false); return "Ring theme changed to " + n + ".";
   }
+  if (/^(turn on |switch to |enable |use )?(the )?light (mode|theme)( on)?$/.test(x)) { setMode(true, false); return "Light mode on."; }
+  if (/^(turn on |switch to |enable |use )?(the )?(dark|night) (mode|theme)( on)?$|^turn off (the )?light mode$/.test(x)) { setMode(false, false); return "Dark mode on."; }
+  if (/\b(rings?|orb|shape|style)\b/.test(x) && x.split(" ").length <= 9 && /^(change|set|make|turn|switch|use|ring|show)/.test(x) && (m = /\b(classic|minimal|simple|radar|pulse|ripple)\b/.exec(x))) { const n = { simple: "minimal", ripple: "pulse" }[m[1]] || m[1]; setShape(n, false); return "Ring shape changed to " + n + "."; }
   if (tracks.length && (m = /^play (.{2,60})$/.exec(x)) && !/^(music|songs?|some music|my music)$/.test(m[1])) {
     const words = m[1].replace(/^(the )?(song|track)\s+/, "").split(/\s+/);
     const i = tracks.findIndex((t) => words.every((w) => t.name.toLowerCase().includes(w)));
