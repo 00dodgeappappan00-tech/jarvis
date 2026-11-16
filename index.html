@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 22 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 23 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -188,9 +188,6 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
     <button type="button" data-p="robot">Robot</button>
     <button type="button" data-p="gravel">Gravel</button>
     <button type="button" data-p="night">Night</button>
-    <button type="button" data-p="cheerful">Cheerful</button>
-    <button type="button" data-p="narrator">Narrator</button>
-    <button type="button" data-p="chipmunk">Chipmunk</button>
     <button type="button" class="go" id="testV">Test voice</button>
   </div>
 
@@ -364,9 +361,6 @@ const PRESETS = {
   commander: { pitch: 0.6, rate: 0.88, re: /google uk english male|daniel|david|alex|#male|\bmale\b/i, avoid: /female/i },
   robot: { pitch: 0.7, rate: 1.1, re: null },
   gravel: { pitch: 0.55, rate: 0.85, re: /google uk english male|daniel|david|alex|#male|\bmale\b/i, avoid: /female/i },
-  cheerful: { pitch: 1.3, rate: 1.1, re: /female|samantha|zira|susan|karen|moira|tessa|fiona|victoria|hazel|aria|jenny|heera|neerja|priya|google (us|uk) english(?! male)/i },
-  narrator: { pitch: 0.8, rate: 0.9, re: /google uk english male|daniel|arthur|oliver|david/i, avoid: /female/i },
-  chipmunk: { pitch: 1.9, rate: 1.2, re: null },
   night: { pitch: 0.45, rate: 0.8, re: /google uk english male|daniel|david|alex|#male|\bmale\b/i, avoid: /female/i }
 };
 function markPreset() { const cur = ls.get("vPreset", "jarvis"); document.querySelectorAll("#presets button").forEach((b) => b.classList.toggle("on", b.dataset.p === cur)); }
@@ -380,7 +374,7 @@ function applyPreset(name) {
 }
 $("presets").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) applyPreset(b.dataset.p); });
 markPreset();
-function personaNote() { const pv = ls.get("vPreset", "jarvis"); if (pv === "cheerful") return "\n\nSpeaking style: upbeat, friendly and encouraging, with a smile in every sentence. Keep every answer accurate."; if (pv === "narrator") return "\n\nSpeaking style: a calm, warm storyteller who explains things like a documentary narrator. Keep every answer accurate."; if (pv === "chipmunk") return "\n\nSpeaking style: playful, bubbly and a little silly, but short and clear. Keep every answer accurate."; if (pv === "gravel") return "\n\nSpeaking style: a deep, gruff, laid-back tough guy who is loyal and protective, speaks in short, low-key sentences, and values family and friends. Keep every answer accurate."; if (pv === "night") return "\n\nSpeaking style: a dark, brooding, terse night guardian. Very short, serious sentences, dry and intense, calm under pressure. Never quote any film. Keep every answer accurate."; return ls.get("vPreset", "jarvis") === "commander" ? "\n\nSpeaking style: a noble, steady leader with a deep, resonant presence. Calm gravity, short deliberate sentences, warm and loyal toward the user, never boastful. This is only a manner of speaking; keep every answer accurate." : ls.get("vPreset", "jarvis") === "robot" ? "\n\nSpeaking style: a precise, slightly mechanical robot assistant, formal and concise. Keep every answer accurate." : ""; }
+function personaNote() { const pv = ls.get("vPreset", "jarvis"); if (pv === "gravel") return "\n\nSpeaking style: a deep, gruff, laid-back tough guy who is loyal and protective, speaks in short, low-key sentences, and values family and friends. Keep every answer accurate."; if (pv === "night") return "\n\nSpeaking style: a dark, brooding, terse night guardian. Very short, serious sentences, dry and intense, calm under pressure. Never quote any film. Keep every answer accurate."; return ls.get("vPreset", "jarvis") === "commander" ? "\n\nSpeaking style: a noble, steady leader with a deep, resonant presence. Calm gravity, short deliberate sentences, warm and loyal toward the user, never boastful. This is only a manner of speaking; keep every answer accurate." : ls.get("vPreset", "jarvis") === "robot" ? "\n\nSpeaking style: a precise, slightly mechanical robot assistant, formal and concise. Keep every answer accurate." : ""; }
 $("testV").onclick = () => testVoice();
 function testVoice() { voiceOn = true; $("mute").textContent = "Voice on"; $("mute").setAttribute("aria-pressed", "false"); speak("All systems are online. How do I sound?"); }
 let speakRun = 0;
