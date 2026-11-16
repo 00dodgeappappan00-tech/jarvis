@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 23 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 24 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -98,6 +98,9 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
 <div class="linkrow" id="miniRow" hidden>
   <div class="tm"><span id="miniName">Music</span><button type="button" id="mPrev">Prev</button><button type="button" id="mPlay">Pause</button><button type="button" id="mNext">Next</button></div>
 </div>
+<div class="linkrow" id="imgRow" hidden>
+  <div class="tm"><img id="imgThumb" alt="" style="height:28px;border-radius:6px"><span>Photo attached. Ask about it.</span><button type="button" id="imgX">Remove</button></div>
+</div>
 <div class="linkrow" id="timers"></div>
 <div class="linkrow" id="calRow" hidden>
   <button type="button" class="linkbtn on" id="calIcs">Add to phone calendar</button>
@@ -130,6 +133,9 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <button type="button" class="linkbtn" id="hands">Hands-free: Off</button>
   <button type="button" class="linkbtn" id="auto">Auto-send: Off</button>
   <button type="button" class="linkbtn" id="locBtn">Location: Off</button>
+  <button type="button" class="linkbtn" id="photoBtn">Photo</button>
+  <button type="button" class="linkbtn" id="listBtn">Lists</button>
+  <button type="button" class="linkbtn" id="briefBtn">Briefing</button>
   <button type="button" class="linkbtn" id="webBtn">Web search: Auto</button>
   <button type="button" class="linkbtn" id="musBtn">Music</button>
   <button type="button" class="linkbtn" id="ringBtn">Ring theme</button>
@@ -137,6 +143,17 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <button type="button" class="linkbtn" id="histBtn">History</button>
   <button type="button" class="linkbtn" id="setBtn">Settings</button>
   <button type="button" class="linkbtn" id="tuneBtn">Change voice</button>
+</div>
+<input type="file" id="photoFile" accept="image/*" hidden>
+<div class="tune" id="listP" hidden>
+  <div class="hint">To-do list. Tap Tick when an item is done. You can also say "add milk to my list".</div>
+  <form id="todoForm" style="display:flex;gap:8px"><input id="todoIn" placeholder="Add an item" style="flex:1;min-width:0;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit"><button type="submit" class="go">Add</button></form>
+  <div class="lst" id="todoList"></div>
+  <div class="hint">Notes. Say "take a note that..." to add one.</div>
+  <div class="lst" id="noteList"></div>
+  <div class="hint">Backup: saves your memory, chats, lists and look settings to a file (never your keys). Use Restore on a new phone or after clearing Chrome.</div>
+  <div class="row"><button type="button" id="bkSave">Save backup</button><button type="button" id="bkLoad">Restore</button></div>
+  <input type="file" id="bkFile" accept=".json,application/json" hidden>
 </div>
 <div class="tune" id="ringP" hidden>
   <div class="hint">Ring colour</div>
@@ -516,11 +533,11 @@ function gemPrompt(prompt) {
 const lastUserOf = (prompt) => ((prompt.match(/User: ([^\n]*)(?:\n|$)(?![\s\S]*User: )/) || [])[1] || "");
 const NEEDSEARCH = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live|who\b|whom|president|prime minister|minister|chief minister|\bceo\b|launch|new\b|update|version|winner|champion|trending|iphone|samsung|pixel|\bipl\b|world cup|election|covid|movie|film|season|episode|song|album|anyone|latest|newest|best\b|top \d|vs\b|compare|review/i;
 /* Streaming: words arrive as Gemini writes them. Any problem before text arrives falls back to the normal call. */
-async function streamGemini(prompt, signal, onText) {
+async function streamGemini(prompt, signal, onText, img) {
   const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
   const need = webAlways() || NEEDSEARCH.test(lastUserOf(prompt));
   const model = need ? await gemModel(key) : "models/gemini-flash-lite-latest";
-  const body = { contents: [{ role: "user", parts: [{ text: gemPrompt(prompt) }] }], generationConfig: { maxOutputTokens: 3000 } };
+  const body = { contents: [{ role: "user", parts: [{ text: gemPrompt(prompt) }].concat(img ? [{ inline_data: { mime_type: "image/jpeg", data: img } }] : []) }], generationConfig: { maxOutputTokens: 3000 } };
   if (need) body.tools = [{ google_search: {} }];
   const r = await tfetch(GBASE + "/" + model + ":streamGenerateContent?alt=sse", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(body), signal }, 15000);
   if (!r.ok || !r.body) throw coded("stream_fail", "stream " + r.status);
@@ -550,10 +567,10 @@ async function streamGemini(prompt, signal, onText) {
   if (!full.trim()) throw coded("stream_fail", "empty stream");
   return full.trim();
 }
-async function callGemini(prompt, signal) {
+async function callGemini(prompt, signal, img) {
   const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
   const p = gemPrompt(prompt);
-  const body = { contents: [{ role: "user", parts: [{ text: p }] }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: 3000 } };
+  const body = { contents: [{ role: "user", parts: [{ text: p }].concat(img ? [{ inline_data: { mime_type: "image/jpeg", data: img } }] : []) }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: 3000 } };
   let model = await gemModel(key);
   const t0 = Date.now(), fake = { ok: false, status: 599, json: async () => ({}), clone() { return this; } };
   const post = async (m, b) => {
@@ -607,22 +624,22 @@ async function callGemini(prompt, signal) {
   if (retryable(r.status)) throw coded("api", "Google's server is overloaded. Wait a few seconds and ask again.");
   throw coded("api", (j.error && j.error.message) || ("Gemini error " + r.status));
 }
-async function callClaude(prompt, signal) {
+async function callClaude(prompt, signal, img) {
   const key = ls.get("cKey", ""); if (!key) throw coded("no_key", "Add your Claude key in Settings.");
   const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", signal,
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json", "anthropic-dangerous-direct-browser-access": "true" },
-    body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 700, messages: [{ role: "user", content: prompt }] }) });
+    body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 700, messages: [{ role: "user", content: img ? [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } }, { type: "text", text: prompt }] : prompt }] }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw coded(r.status === 429 ? "rate_limited" : "api", (j.error && j.error.message) || ("Claude error " + r.status));
   return (j.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
 }
 const sample = async (input, opts) => {
-  const prompt = input[0].content, signal = opts && opts.signal;
-  if (ls.get("prov", "gemini") === "claude") return { text: await callClaude(prompt, signal) };
-  try { return { text: await streamGemini(prompt, signal, opts && opts.onText) }; }
+  const prompt = input[0].content, signal = opts && opts.signal, img = opts && opts.image;
+  if (ls.get("prov", "gemini") === "claude") return { text: await callClaude(prompt, signal, img) };
+  try { return { text: await streamGemini(prompt, signal, opts && opts.onText, img) }; }
   catch (e) {
     if ((signal && signal.aborted) || (e && (e.code === "no_key" || e.name === "AbortError"))) throw e;
-    return { text: await callGemini(prompt, signal) };
+    return { text: await callGemini(prompt, signal, img) };
   }
 };
 
@@ -636,6 +653,8 @@ function show(you, reply) {
 const CAL_RULE = "\n\nCALENDAR: When the user asks you to add, schedule, book or set a reminder or event, confirm it in one short spoken sentence (say the day and time in plain words), and then add one final line in exactly this form with nothing after it: [[EVENT {\"title\":\"...\",\"start\":\"YYYY-MM-DDTHH:MM\",\"end\":\"YYYY-MM-DDTHH:MM\",\"details\":\"...\"}]]  Use the user's local time. If they give no end time, make it one hour after the start. If the day or time is missing, ask one short question instead and add no EVENT line. You cannot read their calendar from this page; if asked what is on it, say so and offer to add events instead.";
 const MEM_RULE = "\n\nMEMORY: You keep a small memory about the user on their phone. When the user tells you something lasting about themselves (name, home city, family, work, likes, routines) or asks you to remember something, add a final line [[REMEMBER {\"fact\":\"short fact in third person\"}]]. When they ask you to forget something, add [[FORGET {\"match\":\"a word from that fact\"}]]. Never store passwords, card numbers, ID numbers or medical details. Do not mention these lines aloud.";
 const TIMER_RULE = "\n\nTIMERS AND ALARMS: Jarvis has a built-in timer. When the user asks for a timer or countdown, confirm in one short sentence and add a final line [[TIMER {\"seconds\":600,\"label\":\"tea\"}]]. When the user asks for an alarm or wake-up at a clock time, confirm in one short sentence, mention it rings only while Jarvis stays open and that they can also tap the calendar button to save a phone reminder, and add a final line [[ALARM {\"time\":\"YYYY-MM-DDTHH:MM\",\"label\":\"wake up\"}]] in their local time. To cancel all timers add [[CANCELTIMERS {}]]. Several of these lines are allowed. Never say a timer is set unless you add the line.";
+const LIST_RULE = "\n\nLISTS AND NOTES: Jarvis keeps a to-do list. When the user asks to add something to their list, add a final line [[TODO {\"add\":\"item\"}]]. When they say something on the list is done, add [[TODO {\"done\":\"item\"}]]. To remove an item, add [[TODO {\"remove\":\"item\"}]]. When they ask you to take a note, add [[NOTE {\"text\":\"the note\"}]]. Confirm in one short sentence. If asked what is on the list, read the open items from the list below. Never claim you added something unless you add the line.";
+function todoNote() { const o = getTodo().filter((x) => !x.done).map((x) => x.t); return "\n\nCurrent to-do list (open items): " + (o.length ? o.join("; ") : "empty") + "."; }
 function memNote() { const m = getMem(); return m.length ? "\n\nThings you remember about the user (use them naturally, never recite them): " + m.join("; ") + "." : ""; }
 function nowNote() { const d = new Date(); return "\n\nCurrent local date and time: " + d.toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short", hour12: true }) + " (India, UTC+05:30). Use this for words like today and tomorrow."; }
 const CALL_RULE = "\n\nCALLS: When the user asks you to call or phone someone, say in one short sentence that you are getting it ready and they should tap the Call button, then add one final line in exactly this form with nothing after it: [[CALL {\"name\":\"Mom\",\"number\":\"\"}]]  Put the phone number in digits only if the user said a number out loud; otherwise leave it empty. You cannot dial by yourself: the user taps the button and then the phone's dialer opens.";
@@ -818,7 +837,7 @@ paintTimers(); tickTimers();
 /* Handles REMEMBER / FORGET / TIMER / ALARM / CANCELTIMERS lines, returns the reply with them removed */
 function extractAll(reply) {
   const notes = []; let alarmEv = null;
-  const clean = reply.replace(/\[\[(REMEMBER|FORGET|TIMER|ALARM|CANCELTIMERS)\s*(\{[\s\S]*?\})?\s*\]\]/g, (all, name, js) => {
+  const clean = reply.replace(/\[\[(REMEMBER|FORGET|TIMER|ALARM|CANCELTIMERS|TODO|NOTE)\s*(\{[\s\S]*?\})?\s*\]\]/g, (all, name, js) => {
     let o = {}; try { o = js ? JSON.parse(js) : {}; } catch (e) {}
     if (name === "REMEMBER") {
       const f = String(o.fact || "").replace(/\s+/g, " ").trim().slice(0, 140);
@@ -835,6 +854,12 @@ function extractAll(reply) {
         alarmEv = { title: label, details: "Set by Jarvis", st, en: new Date(st.getTime() + 15 * 6e4), alarm: true };
         notes.push("Alarm set for " + st.toLocaleString("en-IN", { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true }));
       }
+    } else if (name === "TODO") {
+      if (o.add && addTodo(String(o.add))) notes.push("Added to list: " + String(o.add).slice(0, 40));
+      if (o.done && doneTodo(String(o.done))) notes.push("Ticked: " + String(o.done).slice(0, 40));
+      if (o.remove && removeTodo(String(o.remove))) notes.push("Removed from list");
+    } else if (name === "NOTE") {
+      if (o.text && addNote(String(o.text))) notes.push("Note saved");
     } else if (name === "CANCELTIMERS") { setT([]); paintTimers(); notes.push("Timers cleared"); }
     return "";
   }).trim();
@@ -847,13 +872,13 @@ let curChat = null;
 function saveChat() {
   if (!history.length) return;
   const a = getChats(); let c = a.find((x) => x.id === curChat);
-  if (!c) { c = { id: curChat = Date.now(), title: (history.find((m) => m.role === "user") || { content: "Chat" }).content.slice(0, 50), msgs: [] }; a.unshift(c); }
+  if (!c) { c = { id: curChat = Date.now(), title: (() => { const u = history.find((m) => m.role === "user") || { content: "Chat" }; return (u.shown || u.content).slice(0, 50); })(), msgs: [] }; a.unshift(c); }
   c.ts = Date.now(); c.msgs = history.slice(-40);
   ls.set("chats", JSON.stringify(a.slice(0, 30))); paintHist();
 }
 function renderChat(msgs) {
   say.innerHTML = "";
-  msgs.forEach((m) => { const d = document.createElement("div"); d.className = m.role === "user" ? "you" : "jarvis"; d.textContent = (m.role === "user" ? "You: " : "") + m.content; say.appendChild(d); });
+  msgs.forEach((m) => { const d = document.createElement("div"); d.className = m.role === "user" ? "you" : "jarvis"; d.textContent = (m.role === "user" ? "You: " : "") + (m.shown || m.content); say.appendChild(d); });
   say.scrollTop = say.scrollHeight;
 }
 function paintHist() {
@@ -942,6 +967,11 @@ function localCommand(t) {
   const x = t.toLowerCase().replace(/[.!?,]/g, "").trim();
   const need = "I have no songs yet. Tap Music, then Choose songs.";
   let m;
+  if ((m = /^(?:please )?add (.{2,80}?) to (?:my |the )?(?:to ?do |todo |shopping |grocery )?(?:list|to ?do)$/.exec(x))) return addTodo(m[1]) ? "Added " + m[1] + " to your list." : "That is already on your list.";
+  if ((m = /^(?:please )?(?:remove|delete) (.{2,80}?) from (?:my |the )?(?:to ?do |todo |shopping |grocery )?list$/.exec(x))) return removeTodo(m[1]) ? "Removed " + m[1] + "." : "I could not find that on your list.";
+  if ((m = /^(?:please )?(?:tick off|check off|cross off|mark) (.{2,80}?)(?: as done| done| off)?$/.exec(x)) && !/(rings?|theme|mode)/.test(m[1])) return doneTodo(m[1]) ? "Ticked off " + m[1] + "." : null;
+  if (/^(?:what'?s|what is|show me|read me|read|show|open) (?:on )?(?:my |the )?(?:to ?do |todo |shopping |grocery )?list$/.test(x) || /^what do i (?:need|have) to do$/.test(x)) { const o = getTodo().filter((y) => !y.done).map((y) => y.t); $("listP").hidden = false; paintLists(); return o.length ? "You have " + o.length + " open item" + (o.length > 1 ? "s" : "") + ": " + o.join(", ") + "." : "Your list is empty."; }
+  if ((m = /^(?:take a note|make a note|note down|note)(?: that| to self)?:? (.{2,300})$/i.exec(t.trim().replace(/[.!?]+$/, "")))) { addNote(m[1]); return "Noted."; }
   if (/^(play|start|resume|put on)( some| my| the)? (music|songs?)$/.test(x) || x === "resume music") { if (!tracks.length) return need; if (tIdx < 0) playTrack(0); else player.play().catch(() => {}); return "Playing."; }
   if (/^(pause|stop|mute)( the| my)?( music| song| songs| playing)?$/.test(x) || /^stop the (music|song)$/.test(x)) { if (!tracks.length || player.paused) return null; player.pause(); return "Paused."; }
   if (/^(next|skip)( the)?( song| track)?$/.test(x)) { if (!tracks.length) return need; playTrack(nextIdx(1)); return "Next song."; }
@@ -970,17 +1000,92 @@ function localCommand(t) {
   return null;
 }
 paintMusic();
+
+/* ---------- To-do list, notes, backup ---------- */
+const jget = (k) => { try { const a = JSON.parse(ls.get(k, "[]")); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+const getTodo = () => jget("todos").filter((x) => x && typeof x.t === "string"), setTodo = (a) => { ls.set("todos", JSON.stringify(a.slice(-100))); paintLists(); };
+const getNotes = () => jget("notes").filter((x) => x && typeof x.t === "string"), setNotes = (a) => { ls.set("notes", JSON.stringify(a.slice(-100))); paintLists(); };
+function addTodo(t) { t = t.replace(/\s+/g, " ").trim().slice(0, 80); if (!t) return false; const a = getTodo(); if (a.some((x) => !x.done && x.t.toLowerCase() === t.toLowerCase())) return false; a.push({ t, done: false }); setTodo(a); return true; }
+function doneTodo(k) { k = k.toLowerCase().trim(); const a = getTodo(), it = a.find((x) => !x.done && x.t.toLowerCase().includes(k)); if (!it) return false; it.done = true; setTodo(a); return true; }
+function removeTodo(k) { k = k.toLowerCase().trim(); const a = getTodo(), b = a.filter((x) => !x.t.toLowerCase().includes(k)); if (b.length === a.length) return false; setTodo(b); return true; }
+function addNote(t) { t = t.replace(/\s+/g, " ").trim().slice(0, 300); if (!t) return false; const a = getNotes(); a.push({ t, ts: Date.now() }); setNotes(a); return true; }
+function paintLists() {
+  const tb = $("todoList"), nb = $("noteList"), td = getTodo(), nt = getNotes(); tb.innerHTML = ""; nb.innerHTML = "";
+  if (!td.length) { const d = document.createElement("div"); d.className = "empty"; d.textContent = "Your list is empty."; tb.appendChild(d); }
+  td.forEach((x, i) => {
+    const row = document.createElement("div"); row.className = "it";
+    const b0 = document.createElement("button"); b0.type = "button"; b0.textContent = x.done ? "Done" : "Tick"; b0.onclick = () => { const a = getTodo(); a[i].done = !a[i].done; setTodo(a); };
+    const sp = document.createElement("span"); sp.textContent = x.t; if (x.done) sp.style.textDecoration = "line-through", sp.style.opacity = ".6";
+    const b = document.createElement("button"); b.type = "button"; b.textContent = "Remove"; b.onclick = () => { const a = getTodo(); a.splice(i, 1); setTodo(a); };
+    row.append(b0, sp, b); tb.appendChild(row);
+  });
+  if (!nt.length) { const d = document.createElement("div"); d.className = "empty"; d.textContent = "No notes yet."; nb.appendChild(d); }
+  nt.forEach((x, i) => {
+    const row = document.createElement("div"); row.className = "it";
+    const sp = document.createElement("span"); sp.textContent = x.t; const sm = document.createElement("small"); sm.textContent = new Date(x.ts).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true }); sp.appendChild(sm);
+    const b = document.createElement("button"); b.type = "button"; b.textContent = "Delete"; b.onclick = () => { const a = getNotes(); a.splice(i, 1); setNotes(a); };
+    row.append(sp, b); nb.appendChild(row);
+  });
+}
+$("todoForm").onsubmit = (e) => { e.preventDefault(); if (addTodo($("todoIn").value)) $("todoIn").value = ""; };
+$("listBtn").onclick = () => { $("listP").hidden = !$("listP").hidden; paintLists(); };
+const BK = ["mem", "chats", "todos", "notes", "ring", "rshape", "mode", "vPreset", "vName", "vPitch", "vRate", "lang", "prov", "webAlways", "autoSend2", "hands", "loc", "book"];
+$("bkSave").onclick = () => {
+  const data = {}; BK.forEach((k) => { const v = ls.get(k, null); if (v !== null) data[k] = v; });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ app: "jarvis", v: 1, saved: new Date().toISOString(), data })], { type: "application/json" })); a.download = "jarvis-backup.json";
+  document.body.appendChild(a); a.click(); a.remove(); note.textContent = "Saved jarvis-backup.json in your Downloads. Keep it somewhere safe.";
+};
+$("bkLoad").onclick = () => $("bkFile").click();
+$("bkFile").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text()); if (!j || j.app !== "jarvis" || !j.data) throw 0;
+    let n = 0; BK.forEach((k) => { if (typeof j.data[k] === "string") { ls.set(k, j.data[k]); n++; } });
+    note.textContent = "Restored " + n + " items. Reloading..."; setTimeout(() => location.reload(), 700);
+  } catch (err) { note.textContent = "That is not a Jarvis backup file."; }
+  e.target.value = "";
+};
+const PANELS = { memBtn: "memP", histBtn: "hist", musBtn: "musP", ringBtn: "ringP", listBtn: "listP" };
+Object.entries(PANELS).forEach(([b, p]) => $(b).addEventListener("click", () => { for (const q of Object.values(PANELS)) if (q !== p) $(q).hidden = true; }));
+paintLists();
+
+/* ---------- Photo questions ---------- */
+let pendingImg = null;
+$("photoBtn").onclick = () => $("photoFile").click();
+$("photoFile").onchange = (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  const im = new Image(), url = URL.createObjectURL(f);
+  im.onload = () => {
+    const sc = Math.min(1, 1024 / Math.max(im.width, im.height)), c = document.createElement("canvas");
+    c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+    const d = c.toDataURL("image/jpeg", 0.8); pendingImg = d.split(",")[1]; $("imgThumb").src = d; $("imgRow").hidden = false; URL.revokeObjectURL(url);
+    if (!msg.value.trim()) msg.value = "What is in this photo?"; msg.focus(); note.textContent = "Photo attached. Edit the question if you like, then tap Send.";
+  };
+  im.onerror = () => { note.textContent = "Could not read that photo."; URL.revokeObjectURL(url); };
+  im.src = url;
+};
+$("imgX").onclick = () => { pendingImg = null; $("imgRow").hidden = true; note.textContent = "Photo removed."; };
+
+/* ---------- Daily briefing ---------- */
+function briefPrompt() {
+  const o = getTodo().filter((x) => !x.done).map((x) => x.t), tm = getT().map((t) => t.label);
+  return "Give me a short spoken daily briefing: today's date and day, the weather" + (locOn ? " where I am" : " for my home city if you know it, otherwise for India") + ", and the top two news headlines in India. Then mention my open to-do items: " + (o.length ? o.join(", ") : "none") + ". Active timers: " + (tm.length ? tm.join(", ") : "none") + ". Keep it under about 120 words and friendly.";
+}
+const isBrief = (t) => /^(please )?(give me |show me |start )?(my |the )?(daily |morning )?briefing( please)?$|^good morning( jarvis)?$/i.test(t.trim());
+$("briefBtn").onclick = () => ask("daily briefing");
 const visible = (t) => String(t || "").replace(/\[\[[\s\S]*$/, "").trim();
 let lastReply = "";
 async function ask(text) {
   text = text.trim(); if (!text || busy) return;
   if (!sample) { note.textContent = "Claude is not available in this view."; return; }
+  let shown = text; if (isBrief(text)) { shown = "Daily briefing"; text = briefPrompt(); }
   const lc = localCommand(text);
   if (lc) { msg.value = ""; try { speechSynthesis.cancel(); } catch (e) {} show(text, lc); lastReply = lc; setState("idle"); speak(lc); return; }
   busy = true; try { speechSynthesis.cancel(); } catch (e) {}
   msg.value = ""; setState("thinking"); note.textContent = ""; $("calRow").hidden = true; lastEvent = null; $("callRow").hidden = true; lastCall = null; $("openRow").hidden = true; lastOpen = null;
-  const out = show(text, "…");
-  history.push({ role: "user", content: text });
+  const out = show(shown, "…");
+  const imgNow = pendingImg; pendingImg = null; $("imgRow").hidden = true;
+  history.push({ role: "user", content: text, shown: imgNow ? shown + " (with a photo)" : shown });
   let locNote = "";
   if (locOn && LOCQ.test(text)) {
     const pos = await getPos();
@@ -988,13 +1093,13 @@ async function ask(text) {
     else note.textContent = "Could not get your location, answering without it.";
   }
   const turns = history.slice(-12);
-  const input = [{ role: "user", content: SYSTEM + CAL_RULE + CALL_RULE + OPEN_RULE + MEM_RULE + TIMER_RULE + memNote() + nowNote() + locNote + personaNote() + marketNote() + "\n\nConversation so far follows. Reply only as Jarvis to the last user line.\n\n" +
+  const input = [{ role: "user", content: SYSTEM + CAL_RULE + CALL_RULE + OPEN_RULE + MEM_RULE + TIMER_RULE + LIST_RULE + todoNote() + (imgNow ? "\n\nThe user attached a photo with this message. Look at it and answer about it." : "") + memNote() + nowNote() + locNote + personaNote() + marketNote() + "\n\nConversation so far follows. Reply only as Jarvis to the last user line.\n\n" +
     turns.map((m) => (m.role === "user" ? "User: " : "Jarvis: ") + m.content).join("\n") }];
   ctrl = new AbortController();
   const live = makeLive();
   const slowT = setTimeout(() => { if (busy && !note.textContent) note.textContent = "Still thinking... slow connection."; }, 7000);
   try {
-    const r = await sample(input, { cache: false, signal: ctrl.signal, modelTier: "quick", onText: ({ text: t }) => { out.textContent = visible(t) || "…"; if (live) live.feed(t, false); } });
+    const r = await sample(input, { image: imgNow, cache: false, signal: ctrl.signal, modelTier: "quick", onText: ({ text: t }) => { out.textContent = visible(t) || "…"; if (live) live.feed(t, false); } });
     const act = extractAll((r.text || "").trim() || "I have nothing to add.");
     const got0 = extractEvent(act.clean), got1 = extractCall(got0.clean), got1b = extractOpen(got1.clean), got = { clean: got1b.clean, ev: got0.ev }; const reply = got.clean; lastEvent = got.ev || act.alarmEv; lastCall = got1.call;
     lastOpen = got1b.open; $("openRow").hidden = !lastOpen; if (lastOpen) $("openBtn").textContent = "Open " + (lastOpen.app === "web" ? "website" : APPS[lastOpen.app].name) + (lastOpen.query ? ": " + lastOpen.query : "");
