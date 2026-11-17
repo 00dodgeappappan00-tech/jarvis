@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 31 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 32 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -553,7 +553,7 @@ function gemPrompt(prompt) {
     .replace(/\n\nReference data saved in this page[\s\S]*?(?=\n\nConversation so far)/, "\n\nYou can search Google for current information. Use it for news, prices, weather, scores and anything recent, and answer with the current facts in plain spoken sentences.");
 }
 const lastUserOf = (prompt) => ((prompt.match(/User: ([^\n]*)(?:\n|$)(?![\s\S]*User: )/) || [])[1] || "");
-const NEEDSEARCH = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live|who\b|whom|president|prime minister|minister|chief minister|\bceo\b|launch|new\b|update|version|winner|champion|trending|iphone|samsung|pixel|\bipl\b|world cup|election|covid|movie|film|season|episode|song|album|anyone|latest|newest|best\b|top \d|vs\b|compare|review/i;
+const NEEDSEARCH = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live|who\b|whom|president|prime minister|minister|chief minister|\bceo\b|launch|new\b|update|version|winner|champion|trending|iphone|samsung|pixel|\bipl\b|world cup|election|covid|movie|film|season|episode|song|album|anyone|latest|newest|best\b|top \d|vs\b|compare|review|dollar|rupee|euro|dirham|exchange|conversion/i;
 /* Streaming: words arrive as Gemini writes them. Any problem before text arrives falls back to the normal call. */
 async function streamGemini(prompt, signal, onText, img) {
   const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
@@ -1247,11 +1247,27 @@ async function getRates() {
   try { const c = JSON.parse(ls.get("fx", "null")); if (c && c.rates) return { rates: c.rates, fresh: false }; } catch (e) {}
   return null;
 }
+const NW = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, a: 1 };
+const NS = { hundred: 100, thousand: 1e3, lakh: 1e5, lakhs: 1e5, lac: 1e5, lacs: 1e5, crore: 1e7, crores: 1e7, million: 1e6, millions: 1e6, billion: 1e9, billions: 1e9 };
+/* "thousand 250 dollars", "one thousand two hundred fifty dollars", "2.5 lakh rupees" -> { n, unit } */
+function splitAmount(str) {
+  const w = str.trim().split(/\s+/); let i = 0, total = 0, cur = 0, got = false;
+  for (; i < w.length; i++) {
+    const t = w[i];
+    if (/^\d+(\.\d+)?$/.test(t)) { cur += parseFloat(t); got = true; }
+    else if (t in NW && !(t === "a" && !(w[i + 1] in NS))) { cur += NW[t]; got = true; }
+    else if (t in NS) { if (NS[t] === 100) cur = (cur || 1) * 100; else { total += (cur || 1) * NS[t]; cur = 0; } got = true; }
+    else if (t === "and" && got && (w[i + 1] in NW || /^\d/.test(w[i + 1] || ""))) continue;
+    else break;
+  }
+  if (!got || i >= w.length) return null;
+  return { n: total + cur, unit: w.slice(i).join(" ") };
+}
 function convert(t) {
   const x = t.toLowerCase().replace(/[?!,]/g, "").replace(/\.$/, "").trim();
-  let m = /^(?:please )?(?:convert |what is |what's |whats |how much is |tell me )?([\d.]+)\s*([a-z°][a-z° ]*?)\s+(?:to|in|into|equals?)\s+([a-z°][a-z° ]*)$/.exec(x), n, a, b;
-  if (m) { n = parseFloat(m[1]); a = m[2]; b = m[3]; }
-  else if ((m = /^how (?:many|much) ([a-z°][a-z° ]*?) (?:are |is )?(?:in|there in) ([\d.]+)\s*([a-z°][a-z° ]*)$/.exec(x))) { n = parseFloat(m[2]); a = m[3]; b = m[1]; }
+  let m = /^(?:please )?(?:convert |what is |what's |whats |how much is |tell me )?(.+?)\s+(?:to|in|into|equals?)\s+([a-z°][a-z° ]*)$/.exec(x), n, a, b, am;
+  if (m && (am = splitAmount(m[1]))) { n = am.n; a = am.unit; b = m[2]; }
+  else if ((m = /^how (?:many|much) ([a-z°][a-z° ]*?) (?:are |is )?(?:in|there in) (.+)$/.exec(x)) && (am = splitAmount(m[2]))) { n = am.n; a = am.unit; b = m[1]; }
   else return null;
   if (!isFinite(n)) return null;
   const LA = normU(a), LB = normU(b); let A = null, B = null;
