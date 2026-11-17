@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 27 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 31 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -160,6 +160,8 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <div class="hint">To-do list. Tap Tick when an item is done. You can also say "add milk to my list".</div>
   <form id="todoForm" style="display:flex;gap:8px"><input id="todoIn" placeholder="Add an item" style="flex:1;min-width:0;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit"><button type="submit" class="go">Add</button></form>
   <div class="lst" id="todoList"></div>
+  <div class="hint">Reminders. Say "remind me every day at 8 am to take medicine". They ring while Jarvis is open; tap the calendar button after setting one to save it to your phone for when Jarvis is closed.</div>
+  <div class="lst" id="remList"></div>
   <div class="hint">Notes. Say "take a note that..." to add one.</div>
   <div class="lst" id="noteList"></div>
   <div class="hint">Shortcuts: your own one-tap buttons. Type what Jarvis should do, like "Navigate home" or "Tell me a joke".</div>
@@ -674,6 +676,7 @@ const CAL_RULE = "\n\nCALENDAR: When the user asks you to add, schedule, book or
 const MEM_RULE = "\n\nMEMORY: You keep a small memory about the user on their phone. When the user tells you something lasting about themselves (name, home city, family, work, likes, routines) or asks you to remember something, add a final line [[REMEMBER {\"fact\":\"short fact in third person\"}]]. When they ask you to forget something, add [[FORGET {\"match\":\"a word from that fact\"}]]. Never store passwords, card numbers, ID numbers or medical details. Do not mention these lines aloud.";
 const TIMER_RULE = "\n\nTIMERS AND ALARMS: Jarvis has a built-in timer. When the user asks for a timer or countdown, confirm in one short sentence and add a final line [[TIMER {\"seconds\":600,\"label\":\"tea\"}]]. When the user asks for an alarm or wake-up at a clock time, confirm in one short sentence, mention it rings only while Jarvis stays open and that they can also tap the calendar button to save a phone reminder, and add a final line [[ALARM {\"time\":\"YYYY-MM-DDTHH:MM\",\"label\":\"wake up\"}]] in their local time. To cancel all timers add [[CANCELTIMERS {}]]. Several of these lines are allowed. Never say a timer is set unless you add the line.";
 const LIST_RULE = "\n\nLISTS AND NOTES: Jarvis keeps a to-do list. When the user asks to add something to their list, add a final line [[TODO {\"add\":\"item\"}]]. When they say something on the list is done, add [[TODO {\"done\":\"item\"}]]. To remove an item, add [[TODO {\"remove\":\"item\"}]]. When they ask you to take a note, add [[NOTE {\"text\":\"the note\"}]]. Confirm in one short sentence. If asked what is on the list, read the open items from the list below. Never claim you added something unless you add the line.";
+const REMIND_RULE = "\n\nREMINDERS: When the user says 'remind me ...', add a final line [[REMIND {\"time\":\"HH:MM\",\"label\":\"short thing\",\"repeat\":\"once|daily|weekdays|weekly\",\"date\":\"YYYY-MM-DD\"}]] with time in 24-hour local time. For once, date is the day it should fire. For weekly, date is any date that falls on the right weekday. Use ALARM for wake-up alarms and REMIND for reminders. Confirm in one short sentence and mention the calendar button saves it to the phone. Never say a reminder is set unless you add the line.";
 function todoNote() { const o = getTodo().filter((x) => !x.done).map((x) => x.t); return "\n\nCurrent to-do list (open items): " + (o.length ? o.join("; ") : "empty") + "."; }
 function memNote() { const m = getMem(); return m.length ? "\n\nThings you remember about the user (use them naturally, never recite them): " + m.join("; ") + "." : ""; }
 function nowNote() { const d = new Date(); return "\n\nCurrent local date and time: " + d.toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short", hour12: true }) + " (India, UTC+05:30). Use this for words like today and tomorrow."; }
@@ -777,7 +780,7 @@ $("calIcs").onclick = () => {
   const fmt = (d) => ymd(d);
   const esc = (t) => String(t).replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
   const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Jarvis//EN", "BEGIN:VEVENT", "UID:" + Date.now() + "@jarvis", "DTSTAMP:" + new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z",
-    "DTSTART;TZID=Asia/Kolkata:" + fmt(e.st), "DTEND;TZID=Asia/Kolkata:" + fmt(e.en), "SUMMARY:" + esc(e.title), "DESCRIPTION:" + esc(e.details),
+    "DTSTART;TZID=Asia/Kolkata:" + fmt(e.st), "DTEND;TZID=Asia/Kolkata:" + fmt(e.en), ...(e.rrule ? ["RRULE:" + e.rrule] : []), "SUMMARY:" + esc(e.title), "DESCRIPTION:" + esc(e.details),
     "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + esc(e.title), "TRIGGER:" + (e.alarm ? "PT0S" : "-PT10M"), "END:VALARM", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" })); a.download = "jarvis-event.ics";
   document.body.appendChild(a); a.click(); a.remove();
@@ -823,7 +826,7 @@ function addTimer(sec, label, endAt) {
   if ("Notification" in window && Notification.permission === "default") $("alertRow").hidden = false;
 }
 function ring(t, missed) {
-  const what = /^Alarm/i.test(t.label) ? t.label : "Timer " + (t.label && t.label !== "Timer" ? t.label + " " : "") + "finished";
+  const what = /^(Alarm|Reminder)/i.test(t.label) ? t.label : "Timer " + (t.label && t.label !== "Timer" ? t.label + " " : "") + "finished";
   const line = missed ? what + " (it went off while Jarvis was closed)" : what;
   note.textContent = line; beepOnce(); try { navigator.vibrate && navigator.vibrate([400, 200, 400, 200, 400]); } catch (e) {}
   try {
@@ -857,7 +860,7 @@ paintTimers(); tickTimers();
 /* Handles REMEMBER / FORGET / TIMER / ALARM / CANCELTIMERS lines, returns the reply with them removed */
 function extractAll(reply) {
   const notes = []; let alarmEv = null;
-  const clean = reply.replace(/\[\[(REMEMBER|FORGET|TIMER|ALARM|CANCELTIMERS|TODO|NOTE)\s*(\{[\s\S]*?\})?\s*\]\]/g, (all, name, js) => {
+  const clean = reply.replace(/\[\[(REMEMBER|FORGET|TIMER|ALARM|CANCELTIMERS|TODO|NOTE|REMIND)\s*(\{[\s\S]*?\})?\s*\]\]/g, (all, name, js) => {
     let o = {}; try { o = js ? JSON.parse(js) : {}; } catch (e) {}
     if (name === "REMEMBER") {
       const f = String(o.fact || "").replace(/\s+/g, " ").trim().slice(0, 140);
@@ -880,6 +883,8 @@ function extractAll(reply) {
       if (o.remove && removeTodo(String(o.remove))) notes.push("Removed from list");
     } else if (name === "NOTE") {
       if (o.text && addNote(String(o.text))) notes.push("Note saved");
+    } else if (name === "REMIND") {
+      const r = addReminder(o); if (r) { notes.push("Reminder set: " + describeRem(r)); alarmEv = r.ev; }
     } else if (name === "CANCELTIMERS") { setT([]); paintTimers(); notes.push("Timers cleared"); }
     return "";
   }).trim();
@@ -1056,6 +1061,9 @@ function paintLists() {
     const b = document.createElement("button"); b.type = "button"; b.textContent = "Remove"; b.onclick = () => { const a = getTodo(); a.splice(i, 1); setTodo(a); };
     row.append(b0, sp, b); tb.appendChild(row);
   });
+  const rb = $("remList"), rm = getRem(); rb.innerHTML = "";
+  if (!rm.length) { const d = document.createElement("div"); d.className = "empty"; d.textContent = "No reminders yet."; rb.appendChild(d); }
+  rm.forEach((r, i) => { const row = document.createElement("div"); row.className = "it"; const sp = document.createElement("span"); sp.textContent = describeRem(r); const b = document.createElement("button"); b.type = "button"; b.textContent = "Delete"; b.onclick = () => { const z = getRem(); z.splice(i, 1); setRem(z); }; row.append(sp, b); rb.appendChild(row); });
   if (!nt.length) { const d = document.createElement("div"); d.className = "empty"; d.textContent = "No notes yet."; nb.appendChild(d); }
   nt.forEach((x, i) => {
     const row = document.createElement("div"); row.className = "it";
@@ -1066,7 +1074,7 @@ function paintLists() {
 }
 $("todoForm").onsubmit = (e) => { e.preventDefault(); if (addTodo($("todoIn").value)) $("todoIn").value = ""; };
 $("listBtn").onclick = () => { $("listP").hidden = !$("listP").hidden; paintLists(); };
-const BK = ["mem", "chats", "todos", "notes", "ring", "rshape", "mode", "vPreset", "vName", "vPitch", "vRate", "lang", "prov", "webAlways", "autoSend2", "hands", "loc", "book", "habits", "shortcuts"];
+const BK = ["mem", "chats", "todos", "notes", "ring", "rshape", "mode", "vPreset", "vName", "vPitch", "vRate", "lang", "prov", "webAlways", "autoSend2", "hands", "loc", "book", "habits", "shortcuts", "reminders", "fx"];
 $("bkSave").onclick = () => {
   const data = {}; BK.forEach((k) => { const v = ls.get(k, null); if (v !== null) data[k] = v; });
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ app: "jarvis", v: 1, saved: new Date().toISOString(), data })], { type: "application/json" })); a.download = "jarvis-backup.json";
@@ -1137,7 +1145,7 @@ $("scForm").onsubmit = (e) => { e.preventDefault(); const v = $("scIn").value.tr
 paintSc();
 
 /* ---------- Habit counters, calculator, battery ---------- */
-const dayKey = () => { const d = new Date(); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); };
+function dayKey() { const d = new Date(); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
 const getHab = () => { try { const o = JSON.parse(ls.get("habits", "{}")); return o && typeof o === "object" && !Array.isArray(o) ? o : {}; } catch (e) { return {}; } };
 function logHabit(name) { const h = getHab(), k = dayKey(); h[k] = h[k] || {}; h[k][name] = (h[k][name] || 0) + 1; const keys = Object.keys(h).sort().slice(-60), o = {}; keys.forEach((z) => o[z] = h[z]); ls.set("habits", JSON.stringify(o)); return h[k][name]; }
 function habitCount(name) { const h = getHab(); if (!Object.values(h).some((d) => d && name in d)) return null; return (h[dayKey()] || {})[name] || 0; }
@@ -1152,6 +1160,9 @@ function calc(t) {
 function localExtra(t, x) {
   let m;
   const c = calc(t); if (c) return c;
+  const cv = convert(t); if (cv) return cv;
+  if (/^(?:what are |show |read |list )(?:me )?(?:all )?(?:my )?reminders$|^what reminders do i have$/.test(x)) { const r = getRem(); $("listP").hidden = false; paintLists(); return r.length ? "You have " + r.length + " reminder" + (r.length > 1 ? "s" : "") + ": " + r.map(describeRem).join(". ") + "." : "You have no reminders."; }
+  if (/^(?:delete|clear|remove|cancel) (?:all )?(?:my )?reminders$/.test(x)) { setRem([]); return "All reminders deleted."; }
   if (/^(?:how much|what'?s|what is|whats|check|tell me)?\s*(?:my |the |phone )?(?:phone )?battery(?: level| percentage| status| left| now)?(?: is it| is there| do i have)?$/.test(x) || /^how much battery/.test(x)) {
     if (!navigator.getBattery) return "This browser cannot read the battery level.";
     return navigator.getBattery().then((b) => "Your battery is at " + Math.round(b.level * 100) + " percent" + (b.charging ? " and charging." : ".")).catch(() => "I could not read the battery.");
@@ -1162,6 +1173,104 @@ function localExtra(t, x) {
   if ((m = /^(?:log|count|track) (?:a |one |1 )?(?:glass of )?([a-z ]{2,30})$/.exec(x))) { const n = logHabit(m[1].trim()); return m[1].trim() + " logged. That is " + n + " today."; }
   if (/^i (?:just )?(?:drank|had) (?:a |one )?(?:glass of )?water$/.test(x)) { const n = logHabit("water"); return "Logged. That is " + n + " water today."; }
   if ((m = /^how many (?:glasses of |cups of )?([a-z ]{2,30}?)(?: have i (?:had|logged|drunk|done))?(?: today| so far)?$/.exec(x))) { const n = habitCount(m[1].trim()); if (n !== null) return "You have logged " + n + " " + m[1].trim() + " today."; }
+  return null;
+}
+
+/* ---------- Repeating reminders ---------- */
+function getRem() { return jget("reminders").filter((x) => x && typeof x.time === "string"); }
+function setRem(a) { ls.set("reminders", JSON.stringify(a.slice(-30))); paintLists(); }
+var DOWN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+function fmtClock(tm) { const [h, m] = tm.split(":").map(Number); return (h % 12 || 12) + ":" + pad2(m) + " " + (h < 12 ? "am" : "pm"); }
+function describeRem(r) { return r.label + " at " + fmtClock(r.time) + (r.repeat === "daily" ? " every day" : r.repeat === "weekdays" ? " on weekdays" : r.repeat === "weekly" ? " every " + DOWN[r.dow] : r.date === dayKey() ? " today" : " on " + r.date); }
+function addReminder(o) {
+  const tm = /^(\d{1,2}):(\d{2})$/.exec(String(o.time || "")); if (!tm || +tm[1] > 23 || +tm[2] > 59) return null;
+  const time = pad2(+tm[1]) + ":" + tm[2], label = String(o.label || "Reminder").slice(0, 60), repeat = ["once", "daily", "weekdays", "weekly"].includes(o.repeat) ? o.repeat : "once";
+  const now = new Date(), k = dayKey(); let date = /^\d{4}-\d{2}-\d{2}$/.test(String(o.date || "")) ? o.date : k;
+  const [Y, M, D] = date.split("-").map(Number), base = new Date(Y, M - 1, D, +tm[1], +tm[2]);
+  const r = { id: Date.now() + Math.random(), label, time, repeat, date, dow: base.getDay(), last: "" };
+  /* a time that already passed today is not fired late; it waits for its next day */
+  if (now.getHours() * 60 + now.getMinutes() >= +tm[1] * 60 + +tm[2] && (repeat !== "once" || date === k)) r.last = k;
+  if (repeat === "once" && date < k) return null;
+  const a = getRem(); a.push(r); setRem(a);
+  /* first calendar occurrence */
+  let st = new Date(base);
+  if (repeat === "once") { if (st <= now) st = new Date(now.getTime() + 60000); }
+  else { while (st <= now || (repeat === "weekdays" && (st.getDay() === 0 || st.getDay() === 6)) || (repeat === "weekly" && st.getDay() !== r.dow)) st = new Date(st.getTime() + 864e5); }
+  const rrule = repeat === "daily" ? "FREQ=DAILY" : repeat === "weekdays" ? "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" : repeat === "weekly" ? "FREQ=WEEKLY" : "";
+  r.ev = { title: label, details: "Reminder from Jarvis", st, en: new Date(st.getTime() + 10 * 6e4), alarm: true, rrule };
+  return r;
+}
+function tickReminders() {
+  const a = getRem(); if (!a.length) return;
+  const now = new Date(), k = dayKey(), nm = now.getHours() * 60 + now.getMinutes(), dow = now.getDay(); let ch = false;
+  a.slice().forEach((r) => {
+    const [h, mi] = r.time.split(":").map(Number), tm = h * 60 + mi;
+    const dayOk = r.repeat === "daily" || (r.repeat === "weekdays" && dow >= 1 && dow <= 5) || (r.repeat === "weekly" && dow === r.dow) || (r.repeat === "once" && r.date <= k);
+    if (!dayOk || r.last === k) return;
+    if (r.repeat === "once" ? (r.date === k && nm < tm) : nm < tm) return;
+    r.last = k; ch = true; ring({ label: "Reminder: " + r.label }, r.date < k && r.repeat === "once" || nm - tm > 90);
+    if (r.repeat === "once") a.splice(a.indexOf(r), 1);
+  });
+  if (ch) setRem(a);
+}
+setInterval(tickReminders, 20000); document.addEventListener("visibilitychange", () => { if (!document.hidden) tickReminders(); }); setTimeout(tickReminders, 1500);
+
+/* ---------- Unit and currency converter ---------- */
+const UNITS = {
+  length: { base: "m", u: { mm: .001, millimetre: .001, millimeter: .001, cm: .01, centimetre: .01, centimeter: .01, m: 1, metre: 1, meter: 1, km: 1000, kilometre: 1000, kilometer: 1000, inch: .0254, inche: .0254, in: .0254, foot: .3048, feet: .3048, ft: .3048, yard: .9144, yd: .9144, mile: 1609.344, mi: 1609.344 } },
+  mass: { base: "kg", u: { mg: 1e-6, milligram: 1e-6, g: .001, gram: .001, kg: 1, kilo: 1, kilogram: 1, tonne: 1000, ton: 1000, pound: .45359237, lb: .45359237, ounce: .0283495, oz: .0283495 } },
+  volume: { base: "l", u: { ml: .001, millilitre: .001, milliliter: .001, l: 1, litre: 1, liter: 1, gallon: 3.78541, pint: .473176, cup: .24, tbsp: .0147868, tablespoon: .0147868, tsp: .00492892, teaspoon: .00492892 } },
+  speed: { base: "m/s", u: { kmph: .277778, kph: .277778, kmh: .277778, "km per hour": .277778, "kilometre per hour": .277778, "kilometer per hour": .277778, mph: .44704, "mile per hour": .44704, "meter per second": 1, "metre per second": 1, knot: .514444 } },
+  area: { base: "m2", u: { "square meter": 1, "square metre": 1, "sq m": 1, "square foot": .092903, "square feet": .092903, "sq ft": .092903, acre: 4046.86, hectare: 10000, "square km": 1e6, "square kilometre": 1e6, "square kilometer": 1e6 } },
+  data: { base: "byte", u: { byte: 1, kb: 1024, kilobyte: 1024, mb: 1048576, megabyte: 1048576, gb: 1073741824, gigabyte: 1073741824, tb: 1099511627776, terabyte: 1099511627776 } }
+};
+const TEMPS = { celsius: "c", centigrade: "c", c: "c", fahrenheit: "f", f: "f", kelvin: "k", k: "k" };
+const CUR = { dollar: "USD", usd: "USD", "us dollar": "USD", "american dollar": "USD", rupee: "INR", inr: "INR", rs: "INR", euro: "EUR", eur: "EUR", pound: "GBP", gbp: "GBP", sterling: "GBP", "british pound": "GBP", yen: "JPY", jpy: "JPY", dirham: "AED", aed: "AED", riyal: "SAR", sar: "SAR", yuan: "CNY", rmb: "CNY", cny: "CNY", "australian dollar": "AUD", aud: "AUD", "canadian dollar": "CAD", cad: "CAD", "singapore dollar": "SGD", sgd: "SGD", "swiss franc": "CHF", franc: "CHF", chf: "CHF", ringgit: "MYR", myr: "MYR", baht: "THB", thb: "THB", won: "KRW", krw: "KRW", ruble: "RUB", rouble: "RUB", rub: "RUB", taka: "BDT", bdt: "BDT", dinar: "KWD", kwd: "KWD", rupiah: "IDR", idr: "IDR", peso: "MXN", mxn: "MXN", lira: "TRY", rand: "ZAR", zar: "ZAR", "new zealand dollar": "NZD", nzd: "NZD", "pakistani rupee": "PKR", pkr: "PKR", "nepali rupee": "NPR", npr: "NPR", "sri lankan rupee": "LKR", lkr: "LKR", "qatari riyal": "QAR", qar: "QAR" };
+function normU(w) {
+  w = w.toLowerCase().replace(/°/g, "").replace(/^degrees? /, "").replace(/s per /, " per ").replace(/\s+/g, " ").trim().replace(/^(the|a|an) /, "");
+  const out = [], tries = [w, w.replace(/ies$/, "y"), w.replace(/es$/, ""), w.replace(/s$/, "")];
+  for (const x of tries) {
+    if (x in TEMPS) out.push({ k: "temp", v: TEMPS[x], n: w });
+    if (x in CUR) out.push({ k: "cur", v: CUR[x], n: w });
+    for (const c in UNITS) if (x in UNITS[c].u) out.push({ k: c, v: UNITS[c].u[x], n: w });
+    if (/^[a-z]{3}$/.test(x)) out.push({ k: "curcode", v: x.toUpperCase(), n: w });
+  }
+  return out;
+}
+const fmtNum = (v) => { const a = Math.abs(v); return (a >= 100 ? Math.round(v * 100) / 100 : a >= 1 ? Math.round(v * 10000) / 10000 : Math.round(v * 1e6) / 1e6).toLocaleString("en-IN", { maximumFractionDigits: 6 }); };
+async function getRates() {
+  try { const c = JSON.parse(ls.get("fx", "null")); if (c && c.rates && Date.now() - c.t < 6 * 36e5) return { rates: c.rates, fresh: true }; } catch (e) {}
+  const tryUrl = async (u, pick) => { const ctl = new AbortController(), id = setTimeout(() => ctl.abort(), 6000); try { const r = await fetch(u, { signal: ctl.signal }); if (!r.ok) return null; return pick(await r.json()); } catch (e) { return null; } finally { clearTimeout(id); } };
+  let rates = await tryUrl("https://open.er-api.com/v6/latest/USD", (j) => (j && j.rates) || null);
+  if (!rates) rates = await tryUrl("https://api.frankfurter.app/latest?from=USD", (j) => j && j.rates ? Object.assign({ USD: 1 }, j.rates) : null);
+  if (rates) { ls.set("fx", JSON.stringify({ t: Date.now(), rates })); return { rates, fresh: true }; }
+  try { const c = JSON.parse(ls.get("fx", "null")); if (c && c.rates) return { rates: c.rates, fresh: false }; } catch (e) {}
+  return null;
+}
+function convert(t) {
+  const x = t.toLowerCase().replace(/[?!,]/g, "").replace(/\.$/, "").trim();
+  let m = /^(?:please )?(?:convert |what is |what's |whats |how much is |tell me )?([\d.]+)\s*([a-z°][a-z° ]*?)\s+(?:to|in|into|equals?)\s+([a-z°][a-z° ]*)$/.exec(x), n, a, b;
+  if (m) { n = parseFloat(m[1]); a = m[2]; b = m[3]; }
+  else if ((m = /^how (?:many|much) ([a-z°][a-z° ]*?) (?:are |is )?(?:in|there in) ([\d.]+)\s*([a-z°][a-z° ]*)$/.exec(x))) { n = parseFloat(m[2]); a = m[3]; b = m[1]; }
+  else return null;
+  if (!isFinite(n)) return null;
+  const LA = normU(a), LB = normU(b); let A = null, B = null;
+  const cur = (z) => z.k === "cur" || z.k === "curcode";
+  for (const p of LA) { for (const q of LB) { if ((p.k === "temp" && q.k === "temp") || (UNITS[p.k] && p.k === q.k) || (cur(p) && cur(q))) { A = p; B = q; break; } } if (A) break; }
+  if (!A) return null;
+  if (A.k === "temp" && B.k === "temp") {
+    const c = A.v === "c" ? n : A.v === "f" ? (n - 32) * 5 / 9 : n - 273.15, o = B.v === "c" ? c : B.v === "f" ? c * 9 / 5 + 32 : c + 273.15;
+    return "It is " + fmtNum(o) + " degrees " + (B.v === "c" ? "Celsius" : B.v === "f" ? "Fahrenheit" : "Kelvin") + ".";
+  }
+  if (A.k === B.k && UNITS[A.k]) return fmtNum(n) + " " + a + " is " + fmtNum(n * A.v / B.v) + " " + b + ".";
+  if (cur(A) && cur(B)) {
+    return getRates().then((R) => {
+      if (!R || !R.rates[A.v] || !R.rates[B.v]) return null;
+      const out = n * R.rates[B.v] / R.rates[A.v];
+      const CN = { USD: "US dollars", INR: "rupees", EUR: "euros", GBP: "pounds", JPY: "yen", AED: "dirhams", SAR: "riyals", CNY: "yuan", AUD: "Australian dollars", CAD: "Canadian dollars", SGD: "Singapore dollars", CHF: "Swiss francs", MYR: "ringgit", THB: "baht", KRW: "won", RUB: "roubles", BDT: "taka", KWD: "dinars", PKR: "Pakistani rupees", NPR: "Nepali rupees", LKR: "Sri Lankan rupees", QAR: "riyals" }, nm = (c) => CN[c] || c;
+      return fmtNum(n) + " " + nm(A.v) + " is about " + fmtNum(out) + " " + nm(B.v) + (R.fresh ? ", at today's rate." : ", using the last rate I saved, because I am offline.");
+    });
+  }
   return null;
 }
 const visible = (t) => String(t || "").replace(/\[\[[\s\S]*$/, "").trim();
@@ -1184,7 +1293,7 @@ async function ask(text) {
     else note.textContent = "Could not get your location, answering without it.";
   }
   const turns = history.slice(-12);
-  const input = [{ role: "user", content: SYSTEM + CAL_RULE + CALL_RULE + OPEN_RULE + MEM_RULE + TIMER_RULE + LIST_RULE + todoNote() + (imgNow ? "\n\nThe user attached a photo with this message. Look at it and answer about it." : "") + memNote() + nowNote() + locNote + personaNote() + marketNote() + "\n\nConversation so far follows. Reply only as Jarvis to the last user line.\n\n" +
+  const input = [{ role: "user", content: SYSTEM + CAL_RULE + CALL_RULE + OPEN_RULE + MEM_RULE + TIMER_RULE + REMIND_RULE + LIST_RULE + todoNote() + (imgNow ? "\n\nThe user attached a photo with this message. Look at it and answer about it." : "") + memNote() + nowNote() + locNote + personaNote() + marketNote() + "\n\nConversation so far follows. Reply only as Jarvis to the last user line.\n\n" +
     turns.map((m) => (m.role === "user" ? "User: " : "Jarvis: ") + m.content).join("\n") }];
   if (trLang) input[0].content = "You are a precise translator. Translate the user's last message into " + trLang.name + ". Reply with ONLY the translation in " + trLang.name + ", no explanations, no notes, no quotation marks.\n\nUser: " + text;
   ctrl = new AbortController();
@@ -1253,6 +1362,7 @@ function startListen() {
 }
 if (SRC) { mic.hidden = false; mic.onclick = () => { if (rec) rec.stop(); else startListen(); }; }
 else note.textContent = "This browser has no speech recognition. Open Jarvis in Chrome.";
+
 
 /* ---------- Share the last answer ---------- */
 function shareText() { return lastReply; }
