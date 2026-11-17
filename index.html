@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 32 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 33 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -101,6 +101,9 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
 <div class="linkrow" id="imgRow" hidden>
   <div class="tm"><img id="imgThumb" alt="" style="height:28px;border-radius:6px"><span>Photo attached. Ask about it.</span><button type="button" id="imgX">Remove</button></div>
 </div>
+<div class="linkrow" id="swRow" hidden>
+  <div class="tm"><span>Stopwatch</span><b id="swT">0:00</b><button type="button" id="swLap">Lap</button><button type="button" id="swPause">Pause</button><button type="button" id="swReset">Reset</button></div>
+</div>
 <div class="linkrow" id="timers"></div>
 <div class="linkrow" id="calRow" hidden>
   <button type="button" class="linkbtn on" id="calIcs">Add to phone calendar</button>
@@ -120,6 +123,9 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <button data-q="What can you help me with today?">What can you do?</button>
   <button data-q="Give me a plan for a focused two-hour work block.">Plan my next 2 hours</button>
   <button data-q="Draft a short, polite email asking a colleague to move our meeting to tomorrow.">Draft an email</button>
+  <button data-q="Tell me a story">Story</button>
+  <button data-q="Give me a riddle">Riddle</button>
+  <button data-q="Tell me a fun fact">Fun fact</button>
 </div>
 
 <form class="bar" id="form">
@@ -160,6 +166,9 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <div class="hint">To-do list. Tap Tick when an item is done. You can also say "add milk to my list".</div>
   <form id="todoForm" style="display:flex;gap:8px"><input id="todoIn" placeholder="Add an item" style="flex:1;min-width:0;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit"><button type="submit" class="go">Add</button></form>
   <div class="lst" id="todoList"></div>
+  <div class="hint">Speed dial: save a name and number, then say "call Mom" and tap the Call button.</div>
+  <form id="bkForm" style="display:flex;gap:8px"><input id="bkName" placeholder="Name" style="flex:1;min-width:0;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit"><input id="bkNum" placeholder="Number" inputmode="tel" style="flex:1;min-width:0;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit"><button type="submit" class="go">Save</button></form>
+  <div class="lst" id="bkList"></div>
   <div class="hint">Reminders. Say "remind me every day at 8 am to take medicine". They ring while Jarvis is open; tap the calendar button after setting one to save it to your phone for when Jarvis is closed.</div>
   <div class="lst" id="remList"></div>
   <div class="hint">Notes. Say "take a note that..." to add one.</div>
@@ -820,14 +829,14 @@ addEventListener("pointerdown", () => { try { actx = actx || new (window.AudioCo
 const getT = () => { try { const a = JSON.parse(ls.get("timers", "[]")); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
 const setT = (a) => ls.set("timers", JSON.stringify(a));
 const fmtLeft = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s2 = t % 60; return (h ? h + ":" + pad2(m) : m) + ":" + pad2(s2); };
-function addTimer(sec, label, endAt) {
+function addTimer(sec, label, endAt, extra) {
   const end = endAt || Date.now() + Math.round(sec * 1000), a = getT();
-  a.push({ id: Date.now() + Math.random(), end, label: String(label || "Timer").slice(0, 40) }); setT(a); paintTimers();
+  a.push(Object.assign({ id: Date.now() + Math.random(), end, label: String(label || "Timer").slice(0, 40) }, extra || {})); setT(a); paintTimers();
   if ("Notification" in window && Notification.permission === "default") $("alertRow").hidden = false;
 }
 function ring(t, missed) {
   const what = /^(Alarm|Reminder)/i.test(t.label) ? t.label : "Timer " + (t.label && t.label !== "Timer" ? t.label + " " : "") + "finished";
-  const line = missed ? what + " (it went off while Jarvis was closed)" : what;
+  const line = missed ? (t.say || what) + " (it went off while Jarvis was closed)" : (t.say || what);
   note.textContent = line; beepOnce(); try { navigator.vibrate && navigator.vibrate([400, 200, 400, 200, 400]); } catch (e) {}
   try {
     if ("Notification" in window && Notification.permission === "granted") {
@@ -836,6 +845,13 @@ function ring(t, missed) {
     }
   } catch (e) {}
   if (!busy && voiceOn) setTimeout(() => speak(line), 1100);
+  if (t.pomo && !missed) nextPomo(t.pomo);
+}
+function pomoSay(p) { return p.ph === "focus" ? (p.n >= 4 ? "All four focus sessions are done. Great work." : "Focus session " + p.n + " is done. Take a " + p.b + " minute break.") : "Break is over. Starting focus session " + (p.n + 1) + "."; }
+function startPomo(f, b, n) { const p = { f, b, n, ph: "focus" }; addTimer(f * 60, "Focus " + n, null, { pomo: p, say: pomoSay(p) }); }
+function nextPomo(p) {
+  if (p.ph === "focus") { if (p.n >= 4) return; const q = { f: p.f, b: p.b, n: p.n, ph: "break" }; addTimer(p.b * 60, "Break", null, { pomo: q, say: pomoSay(q) }); }
+  else startPomo(p.f, p.b, p.n + 1);
 }
 function paintTimers() {
   const box = $("timers"), a = getT(); box.innerHTML = "";
@@ -1074,7 +1090,7 @@ function paintLists() {
 }
 $("todoForm").onsubmit = (e) => { e.preventDefault(); if (addTodo($("todoIn").value)) $("todoIn").value = ""; };
 $("listBtn").onclick = () => { $("listP").hidden = !$("listP").hidden; paintLists(); };
-const BK = ["mem", "chats", "todos", "notes", "ring", "rshape", "mode", "vPreset", "vName", "vPitch", "vRate", "lang", "prov", "webAlways", "autoSend2", "hands", "loc", "book", "habits", "shortcuts", "reminders", "fx"];
+const BK = ["mem", "chats", "todos", "notes", "ring", "rshape", "mode", "vPreset", "vName", "vPitch", "vRate", "lang", "prov", "webAlways", "autoSend2", "hands", "loc", "book", "habits", "shortcuts", "reminders", "fx", "sw"];
 $("bkSave").onclick = () => {
   const data = {}; BK.forEach((k) => { const v = ls.get(k, null); if (v !== null) data[k] = v; });
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ app: "jarvis", v: 1, saved: new Date().toISOString(), data })], { type: "application/json" })); a.download = "jarvis-backup.json";
@@ -1161,6 +1177,7 @@ function localExtra(t, x) {
   let m;
   const c = calc(t); if (c) return c;
   const cv = convert(t); if (cv) return cv;
+  const mo = localMore(t, x); if (mo) return mo;
   if (/^(?:what are |show |read |list )(?:me )?(?:all )?(?:my )?reminders$|^what reminders do i have$/.test(x)) { const r = getRem(); $("listP").hidden = false; paintLists(); return r.length ? "You have " + r.length + " reminder" + (r.length > 1 ? "s" : "") + ": " + r.map(describeRem).join(". ") + "." : "You have no reminders."; }
   if (/^(?:delete|clear|remove|cancel) (?:all )?(?:my )?reminders$/.test(x)) { setRem([]); return "All reminders deleted."; }
   if (/^(?:how much|what'?s|what is|whats|check|tell me)?\s*(?:my |the |phone )?(?:phone )?battery(?: level| percentage| status| left| now)?(?: is it| is there| do i have)?$/.test(x) || /^how much battery/.test(x)) {
@@ -1289,12 +1306,93 @@ function convert(t) {
   }
   return null;
 }
+
+/* ---------- Speed dial ---------- */
+function paintBook() {
+  const box = $("bkList"), b = getBook(), ks = Object.keys(b); box.innerHTML = "";
+  if (!ks.length) { const d = document.createElement("div"); d.className = "empty"; d.textContent = "No numbers saved yet."; box.appendChild(d); }
+  ks.forEach((k) => {
+    const row = document.createElement("div"); row.className = "it";
+    const sp = document.createElement("span"); sp.textContent = k.replace(/\b\w/g, (c) => c.toUpperCase()); const sm = document.createElement("small"); sm.textContent = b[k]; sp.appendChild(sm);
+    const c = document.createElement("button"); c.type = "button"; c.textContent = "Call"; c.onclick = () => dial(b[k]);
+    const x = document.createElement("button"); x.type = "button"; x.textContent = "Remove"; x.onclick = () => { const z = getBook(); delete z[k]; ls.set("book", JSON.stringify(z)); paintBook(); };
+    row.append(sp, c, x); box.appendChild(row);
+  });
+}
+$("bkForm").onsubmit = (e) => {
+  e.preventDefault(); const k = keyName($("bkName").value), n = $("bkNum").value.replace(/[^\d+]/g, "");
+  if (!k || n.length < 3) { note.textContent = "Type a name and a phone number."; return; }
+  const b = getBook(); b[k] = n; ls.set("book", JSON.stringify(b)); $("bkName").value = ""; $("bkNum").value = ""; paintBook(); note.textContent = "Saved. Say \"call " + k + "\".";
+};
+$("listBtn").addEventListener("click", paintBook);
+paintBook();
+function findFav(name) {
+  const k = keyName(name), b = getBook(), ks = Object.keys(b); if (!k) return null;
+  const hit = ks.find((z) => z === k) || ks.find((z) => z.startsWith(k) || k.startsWith(z)) || ks.find((z) => z.includes(k) || k.includes(z));
+  return hit ? { name: hit.replace(/\b\w/g, (c) => c.toUpperCase()), number: b[hit] } : null;
+}
+
+/* ---------- Stopwatch ---------- */
+function loadSW() { try { const o = JSON.parse(ls.get("sw", "null")); if (o && typeof o === "object" && Array.isArray(o.laps)) return o; } catch (e) {} return { run: false, start: 0, acc: 0, laps: [] }; }
+let sw = loadSW();
+const saveSW = () => ls.set("sw", JSON.stringify(sw));
+const swMs = () => sw.acc + (sw.run ? Date.now() - sw.start : 0);
+function clockFmt(ms) { const t = Math.floor(ms / 1000), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s2 = t % 60; return (h ? h + ":" + pad2(m) : m) + ":" + pad2(s2); }
+function spokenDur(ms) { const t = Math.round(ms / 1000), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s2 = t % 60, p = []; if (h) p.push(h + (h > 1 ? " hours" : " hour")); if (m) p.push(m + (m > 1 ? " minutes" : " minute")); if (s2 || !p.length) p.push(s2 + (s2 === 1 ? " second" : " seconds")); return p.join(" ").replace(/ (\d+ seconds?)$/, " and $1").replace(/^(\d+ \w+) and (\d+ seconds?)$/, "$1 and $2"); }
+function swPaint() { $("swRow").hidden = !(sw.run || sw.acc > 0); $("swT").textContent = clockFmt(swMs()); $("swPause").textContent = sw.run ? "Pause" : "Resume"; }
+const swStart = () => { if (!sw.run) { sw.run = true; sw.start = Date.now(); saveSW(); } swPaint(); };
+const swPause = () => { if (sw.run) { sw.acc += Date.now() - sw.start; sw.run = false; saveSW(); } swPaint(); };
+const swReset = () => { sw = { run: false, start: 0, acc: 0, laps: [] }; saveSW(); swPaint(); };
+function swLap() { const ms = swMs(), prev = sw.laps.length ? sw.laps[sw.laps.length - 1] : 0; sw.laps.push(ms); saveSW(); return { n: sw.laps.length, lap: ms - prev, total: ms }; }
+$("swPause").onclick = () => (sw.run ? swPause() : swStart()); $("swReset").onclick = swReset;
+$("swLap").onclick = () => { if (!sw.run) return; const l = swLap(); note.textContent = "Lap " + l.n + ": " + clockFmt(l.lap) + " (total " + clockFmt(l.total) + ")"; };
+setInterval(() => { if (sw.run) swPaint(); }, 250); swPaint();
+
+/* ---------- Stories, riddles, facts, jokes ---------- */
+function quickPrompt(t) {
+  const x = t.toLowerCase().replace(/[.!?,]/g, "").trim(); let m;
+  if ((m = /^(?:please )?(?:tell|read|narrate|say|give)?(?: me)?(?: a| an| another| one)?( bedtime| short| long| funny| scary| moral| kids| kid| children| childrens| adventure| fairy tale)? ?(?:story|tale)(?: about (.{2,80}))?$/.exec(x)) && /story|tale/.test(x)) {
+    const kind = (m[1] || "").trim(), words = /long/.test(kind) ? 400 : /short/.test(kind) ? 100 : 200;
+    return "Tell me a " + (kind ? kind + " " : "") + "story" + (m[2] ? " about " + m[2] : "") + ". About " + words + " words, simple vivid language, a clear beginning, middle and end. Write it to be read aloud: no headings, no bullet points, no emojis. Calm storyteller voice. If I ask for another, make it a different one.";
+  }
+  if (/^(?:please )?(?:(?:tell|give|ask)(?: me)?(?: a| an| another| one)?(?: new)? riddle(?: me)?|riddle me(?: this)?|another riddle)$/.test(x))
+    return "Ask me one clever riddle that is fun for all ages. Say only the riddle, never the answer. When I guess, tell me if I am right. If I say I give up, reveal the answer with a one-line explanation, then offer another riddle.";
+  if (/^(?:please )?(?:(?:tell|give)(?: me)?(?: a| an| another| one)?(?: fun| interesting| random| cool| surprising)? fact|fun fact|another fact|another fun fact)$/.test(x))
+    return "Tell me one surprising, true fun fact in two short sentences. Pick any topic at random and do not repeat a fact from earlier in this chat.";
+  if (/^(?:please )?(?:(?:tell|give)(?: me)?(?: a| another| one)?(?: new)? joke|another joke|make me laugh)$/.test(x))
+    return "Tell me one short, clean, genuinely funny joke. Do not repeat a joke from earlier in this chat.";
+  return null;
+}
+
+/* ---------- Voice commands for speed dial, stopwatch, pomodoro ---------- */
+function localMore(t, x) {
+  let m; x = x.replace(/stop watch/g, "stopwatch");
+  if ((m = /^(?:please )?(?:call|dial|phone|ring) (.{2,40})$/.exec(x))) {
+    const digits = m[1].replace(/[^\d+]/g, ""), fav = findFav(m[1]);
+    if (fav) { lastCall = { name: fav.name, number: fav.number }; $("callRow").hidden = false; $("callBtn").textContent = "Call " + fav.name; return "Calling " + fav.name + ". Tap the Call button."; }
+    if (digits.length >= 6 && /^[\d\s+()-]+$/.test(m[1])) { lastCall = { name: "", number: digits }; $("callRow").hidden = false; $("callBtn").textContent = "Call " + digits; return "Ready to call " + digits.split("").join(" ") + ". Tap the Call button."; }
+  }
+  if (/^(?:show|read|list|who is in|what is in|what are) (?:me )?(?:my )?(?:speed dial|favou?rites|saved numbers)$/.test(x)) { const ks = Object.keys(getBook()); $("listP").hidden = false; paintBook(); return ks.length ? "Your speed dial has " + ks.join(", ") + "." : "Your speed dial is empty. Add names in Lists."; }
+  if (/^(?:start|begin|resume|run)(?: the| a| my)? stopwatch$/.test(x)) { swStart(); return "Stopwatch started."; }
+  if (/^(?:stop|pause|end)(?: the| my)? stopwatch$/.test(x)) { if (!sw.run) return "The stopwatch is not running."; swPause(); return "Stopped at " + spokenDur(swMs()) + "."; }
+  if (/^(?:reset|clear)(?: the| my)? stopwatch$/.test(x)) { swReset(); return "Stopwatch reset."; }
+  if (/^restart(?: the| my)? stopwatch$/.test(x)) { swReset(); swStart(); return "Stopwatch restarted."; }
+  if (/^(?:take a |mark a |record a )?lap$/.test(x)) { if (!sw.run) return "Start the stopwatch first."; const l = swLap(); return "Lap " + l.n + ": " + spokenDur(l.lap) + ". Total " + spokenDur(l.total) + "."; }
+  if (/^(?:how long|what is|whats|check)(?: on)?(?: the| my)? stopwatch(?: time)?$|^stopwatch time$/.test(x)) return sw.run || sw.acc ? "The stopwatch is at " + spokenDur(swMs()) + (sw.run ? "." : ", paused.") : "The stopwatch is not running.";
+  if ((m = /^(?:please )?(?:start |begin |set |run )?(?:a |an )?(?:(\d+)[ -]?(?:min|mins|minute|minutes) )?(?:study|focus|work|pomodoro)(?: timer| session| mode)?(?: with (?:a )?(?:(\d+)[ -]?(?:min|mins|minute|minutes) )?breaks?)?$/.exec(x)) && /study|focus|work|pomodoro/.test(x)) {
+    const f = Math.min(120, Math.max(1, +m[1] || 25)), b = Math.min(60, Math.max(1, +m[2] || 5));
+    setT(getT().filter((z) => !z.pomo)); startPomo(f, b, 1);
+    return "Study timer started: " + f + " minutes of focus, then " + b + " minute breaks, four rounds. Keep Jarvis open.";
+  }
+  if (/^(?:stop|cancel|end|quit)(?: the| my)? (?:pomodoro|study timer|focus timer|study session|focus session|study mode)$/.test(x)) { setT(getT().filter((z) => !z.pomo)); paintTimers(); return "Study timer stopped."; }
+  return null;
+}
 const visible = (t) => String(t || "").replace(/\[\[[\s\S]*$/, "").trim();
 let lastReply = "";
 async function ask(text) {
   text = text.trim(); if (!text || busy) return;
   if (!sample) { note.textContent = "Claude is not available in this view."; return; }
-  let shown = text; if (isBrief(text)) { shown = "Daily briefing"; text = briefPrompt(); }
+  let shown = text; if (isBrief(text)) { shown = "Daily briefing"; text = briefPrompt(); } else { const qp = quickPrompt(text); if (qp) text = qp; }
   const lc = (!trLang || /translat/i.test(text)) ? await Promise.resolve(localCommand(text)) : null;
   if (lc) { msg.value = ""; try { speechSynthesis.cancel(); } catch (e) {} show(text, lc); lastReply = lc; setState("idle"); speak(lc); return; }
   busy = true; try { speechSynthesis.cancel(); } catch (e) {}
