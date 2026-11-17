@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 33 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 35 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -143,6 +143,7 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   <button type="button" class="linkbtn" id="photoBtn">Photo</button>
   <button type="button" class="linkbtn" id="listBtn">Lists</button>
   <button type="button" class="linkbtn" id="briefBtn">Briefing</button>
+  <button type="button" class="linkbtn" id="brainBtn">Brain: Smart</button>
   <button type="button" class="linkbtn" id="webBtn">Web search: Auto</button>
   <button type="button" class="linkbtn" id="musBtn">Music</button>
   <button type="button" class="linkbtn" id="ringBtn">Ring theme</button>
@@ -555,26 +556,50 @@ async function gemModel(key) {
   } catch (e) {}
   return "models/gemini-flash-latest";
 }
-const webAlways = () => ls.get("webAlways", "0") === "1";
+const webAlways = () => oneShot !== null || ls.get("webAlways", "0") === "1";
+let oneShot = null;
+const brain = () => { if (oneShot === "deep") return "deep"; const b = ls.get("brain", "smart"); return b === "fast" || b === "deep" ? b : "smart"; };
+const FACTQ = /^(who|what|when|where|why|how|which|explain|define|describe|tell me about|compare|difference|history of|meaning of|teach me|is it true|can you explain)\b/i;
+const DEEPNOTE = "\n\nDEEP MODE: The person wants a thorough, expert-level answer. Ignore the earlier length limit. Give a rich, well-organised answer in flowing spoken paragraphs of up to about 450 words: the key facts, background and context, real names, numbers and dates, and any important caveats. Verify facts with Google Search. If something is uncertain, say so.";
+const SMARTNOTE = "\n\nKNOWLEDGE: For factual or explanatory questions give a complete, accurate answer of up to about 250 words with specific names, numbers and dates, not vague generalities. If unsure, say so plainly.";
+async function gemPro(key) {
+  try { if (Date.now() - parseInt(ls.get("proFail", "0"), 10) < 36e5) return null; } catch (e) {}
+  const c = ls.get("gPro", ""); if (c) return c === "none" ? null : c;
+  try {
+    const r = await tfetch(GBASE + "/models?pageSize=200", { headers: { "x-goog-api-key": key } }, 8000);
+    if (r.ok) {
+      const j = await r.json(), ver = (n) => parseFloat(n.match(/gemini-([\d.]+)-pro/)[1]);
+      const ok = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes("generateContent") && /^models\/gemini-[\d.]+-pro$/.test(m.name));
+      ok.sort((a, b) => ver(b.name) - ver(a.name));
+      ls.set("gPro", ok.length ? ok[0].name : "none"); return ok.length ? ok[0].name : null;
+    }
+  } catch (e) {}
+  return null;
+}
 function gemPrompt(prompt) {
-  return prompt
+  const bm = brain(), note = bm === "deep" ? DEEPNOTE : bm === "smart" ? SMARTNOTE : "";
+  const base = prompt
     .replace("say it may be out of date, and say you cannot check live information from this page", "search the web and answer with the current facts")
     .replace(/\n\nReference data saved in this page[\s\S]*?(?=\n\nConversation so far)/, "\n\nYou can search Google for current information. Use it for news, prices, weather, scores and anything recent, and answer with the current facts in plain spoken sentences.");
+  return note ? base.replace("\n\nConversation so far", note + "\n\nConversation so far") : base;
 }
 const lastUserOf = (prompt) => ((prompt.match(/User: ([^\n]*)(?:\n|$)(?![\s\S]*User: )/) || [])[1] || "");
 const NEEDSEARCH = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live|who\b|whom|president|prime minister|minister|chief minister|\bceo\b|launch|new\b|update|version|winner|champion|trending|iphone|samsung|pixel|\bipl\b|world cup|election|covid|movie|film|season|episode|song|album|anyone|latest|newest|best\b|top \d|vs\b|compare|review|dollar|rupee|euro|dirham|exchange|conversion/i;
 /* Streaming: words arrive as Gemini writes them. Any problem before text arrives falls back to the normal call. */
 async function streamGemini(prompt, signal, onText, img) {
   const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
-  const need = !trLang && (webAlways() || NEEDSEARCH.test(lastUserOf(prompt)));
-  const model = need ? await gemModel(key) : "models/gemini-flash-lite-latest";
-  const body = { contents: [{ role: "user", parts: [{ text: gemPrompt(prompt) }].concat(img ? [{ inline_data: { mime_type: "image/jpeg", data: img } }] : []) }], generationConfig: { maxOutputTokens: 3000 } };
+  const bm = brain(), lu = lastUserOf(prompt);
+  const need = !trLang && (bm === "deep" || webAlways() || NEEDSEARCH.test(lu) || (bm === "smart" && FACTQ.test(lu)));
+  let model = bm === "fast" ? (need ? await gemModel(key) : "models/gemini-flash-lite-latest") : await gemModel(key);
+  if (bm === "deep" && !trLang) model = (await gemPro(key)) || model;
+  const TO = bm === "deep" ? 45000 : 15000;
+  const body = { contents: [{ role: "user", parts: [{ text: gemPrompt(prompt) }].concat(img ? [{ inline_data: { mime_type: "image/jpeg", data: img } }] : []) }], generationConfig: { maxOutputTokens: bm === "deep" ? 8000 : 3000 } };
   if (need) body.tools = [{ google_search: {} }];
-  const r = await tfetch(GBASE + "/" + model + ":streamGenerateContent?alt=sse", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(body), signal }, 15000);
-  if (!r.ok || !r.body) throw coded("stream_fail", "stream " + r.status);
+  const r = await tfetch(GBASE + "/" + model + ":streamGenerateContent?alt=sse", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(body), signal }, TO);
+  if (!r.ok || !r.body) { if (r.status === 429 && /-pro$/.test(model)) ls.set("proFail", String(Date.now())); throw coded("stream_fail", "stream " + r.status); }
   const rd = r.body.getReader(), dec = new TextDecoder();
   let buf = "", full = "";
-  const stall = () => new Promise((_, no) => setTimeout(() => no(coded("stream_fail", "stalled")), 15000));
+  const stall = () => new Promise((_, no) => setTimeout(() => no(coded("stream_fail", "stalled")), TO));
   try {
     for (;;) {
       const { done, value } = await Promise.race([rd.read(), stall()]);
@@ -601,21 +626,23 @@ async function streamGemini(prompt, signal, onText, img) {
 async function callGemini(prompt, signal, img) {
   const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
   const p = gemPrompt(prompt);
-  const body = { contents: [{ role: "user", parts: [{ text: p }].concat(img ? [{ inline_data: { mime_type: "image/jpeg", data: img } }] : []) }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: 3000 } };
+  const bm = brain(), TO = bm === "deep" ? 45000 : 15000;
+  const body = { contents: [{ role: "user", parts: [{ text: p }].concat(img ? [{ inline_data: { mime_type: "image/jpeg", data: img } }] : []) }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: bm === "deep" ? 8000 : 3000 } };
   let model = await gemModel(key);
+  const proM = bm === "deep" && !trLang ? await gemPro(key) : null;
   const t0 = Date.now(), fake = { ok: false, status: 599, json: async () => ({}), clone() { return this; } };
   const post = async (m, b) => {
     if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
-    try { return await tfetch(GBASE + "/" + m + ":generateContent", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(b), signal }, 15000); }
+    try { return await tfetch(GBASE + "/" + m + ":generateContent", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(b), signal }, TO); }
     catch (e) { if (signal && signal.aborted) throw e; return fake; }
   };
   const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
   /* Speed: Google Search and big "thinking" models are slow. Use them only when the question needs fresh facts. */
   const lastUser = lastUserOf(prompt);
-  const needSearch = !trLang && (webAlways() || NEEDSEARCH.test(lastUser));
+  const needSearch = !trLang && (bm === "deep" || webAlways() || NEEDSEARCH.test(lastUser) || (bm === "smart" && FACTQ.test(lastUser)));
   const _unused = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live/i.test(lastUser);
-  const models = needSearch
-    ? [...new Set([model, "models/gemini-flash-latest", "models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite"])]
+  const models = (bm === "deep" || bm === "smart" || needSearch)
+    ? [...new Set([proM, model, "models/gemini-flash-latest", "models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite"].filter(Boolean))]
     : [...new Set(["models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite", model, "models/gemini-flash-latest"])];
   const retryable = (c) => [500, 502, 503, 504].includes(c);
   const textOf = (jj) => ((jj.candidates && jj.candidates[0] && jj.candidates[0].content && jj.candidates[0].content.parts) || []).map((x) => x.text || "").join("").trim();
@@ -627,6 +654,7 @@ async function callGemini(prompt, signal, img) {
     for (const useTools of needSearch ? [true, false] : [false]) {
       const b = useTools ? body : { contents: body.contents, generationConfig: body.generationConfig };
       r = await post(m, b);
+      if (r.status === 429 && m === proM) ls.set("proFail", String(Date.now()));
       if (retryable(r.status)) { note.textContent = "Server busy, trying again..."; await wait(1200); r = await post(m, b); }
       if (r.ok) {
         const jj = await r.json().catch(() => ({})), txt = textOf(jj);
@@ -941,6 +969,11 @@ paintHist();
 function paintWeb() { const on = webAlways(); $("webBtn").textContent = "Web search: " + (on ? "Always" : "Auto"); $("webBtn").classList.toggle("on", on); }
 $("webBtn").onclick = () => { ls.set("webAlways", webAlways() ? "0" : "1"); paintWeb(); note.textContent = webAlways() ? "Jarvis now checks Google for every question. Answers are up to date but a few seconds slower." : "Auto: Jarvis searches Google for news, prices, sports and anything recent, and answers the rest instantly."; };
 paintWeb();
+const BRAINS = { fast: "Fast: quickest replies, lighter knowledge.", smart: "Smart: better knowledge, checks Google for factual questions.", deep: "Deep: most thorough and expert answers, slower, and may use up the free limit sooner." };
+function paintBrain() { const b = brain(); $("brainBtn").textContent = "Brain: " + b[0].toUpperCase() + b.slice(1); $("brainBtn").classList.toggle("on", b !== "smart"); }
+function setBrain(b, say_) { ls.set("brain", b); paintBrain(); if (say_) note.textContent = BRAINS[b]; }
+$("brainBtn").onclick = () => setBrain({ fast: "smart", smart: "deep", deep: "fast" }[brain()], true);
+paintBrain();
 /* ---------- Ring theme ---------- */
 function setShape(n, say_) {
   if (!["classic", "minimal", "radar", "pulse"].includes(n)) n = "classic";
@@ -1090,7 +1123,7 @@ function paintLists() {
 }
 $("todoForm").onsubmit = (e) => { e.preventDefault(); if (addTodo($("todoIn").value)) $("todoIn").value = ""; };
 $("listBtn").onclick = () => { $("listP").hidden = !$("listP").hidden; paintLists(); };
-const BK = ["mem", "chats", "todos", "notes", "ring", "rshape", "mode", "vPreset", "vName", "vPitch", "vRate", "lang", "prov", "webAlways", "autoSend2", "hands", "loc", "book", "habits", "shortcuts", "reminders", "fx", "sw"];
+const BK = ["mem", "chats", "todos", "notes", "ring", "rshape", "mode", "vPreset", "vName", "vPitch", "vRate", "lang", "prov", "webAlways", "autoSend2", "hands", "loc", "book", "habits", "shortcuts", "reminders", "fx", "sw", "brain"];
 $("bkSave").onclick = () => {
   const data = {}; BK.forEach((k) => { const v = ls.get(k, null); if (v !== null) data[k] = v; });
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ app: "jarvis", v: 1, saved: new Date().toISOString(), data })], { type: "application/json" })); a.download = "jarvis-backup.json";
@@ -1184,6 +1217,7 @@ function localExtra(t, x) {
     if (!navigator.getBattery) return "This browser cannot read the battery level.";
     return navigator.getBattery().then((b) => "Your battery is at " + Math.round(b.level * 100) + " percent" + (b.charging ? " and charging." : ".")).catch(() => "I could not read the battery.");
   }
+  if ((m = /^(?:switch to |use |turn on |set |go to )?(fast|smart|deep) (?:mode|brain)(?: on)?$/.exec(x))) { setBrain(m[1], false); return { fast: "Fast mode. Quick answers.", smart: "Smart mode. Better knowledge with Google checks.", deep: "Deep mode. Thorough expert answers, a little slower." }[m[1]]; }
   if ((m = /^(?:translate|translator|translation)(?: mode)?(?: on)?(?: to| into| in)? ?([a-z]+)$/.exec(x)) && TRL[m[1]]) { setTr(m[1], false); return "Translator on. Say anything and I will say it in " + m[1][0].toUpperCase() + m[1].slice(1) + "."; }
   if ((m = /^(?:start |begin )?translating(?: to| into)? ([a-z]+)$/.exec(x)) && TRL[m[1]]) { setTr(m[1], false); return "Translator on for " + m[1][0].toUpperCase() + m[1].slice(1) + "."; }
   if (/^(?:stop|end|turn off|exit|disable)(?: the)? (?:translating|translator|translation)(?: mode)?$|^translator off$/.test(x)) { setTr(null, false); return "Translator off."; }
@@ -1349,6 +1383,18 @@ $("swLap").onclick = () => { if (!sw.run) return; const l = swLap(); note.textCo
 setInterval(() => { if (sw.run) swPaint(); }, 250); swPaint();
 
 /* ---------- Stories, riddles, facts, jokes ---------- */
+/* "search deeply about X", "deep research X", "explain X in detail", "search the web for X", "google X" apply to that one question only */
+function oneShotCmd(t) {
+  const x = t.replace(/[?!]+$/, "").trim(); let m;
+  if ((m = /^(?:please |jarvis )?(?:do |make |give me |run |start )?(?:a |an )?(?:deep|detailed|thorough|in[- ]depth|expert)[ -]?(?:web )?(?:search|research|dive|answer|explanation|analysis|report)?(?: on| about| for| into| of)? (.{3,})$/i.exec(x)) || (m = /^(?:please |jarvis )?(?:research|investigate|analy[sz]e) (.{3,})$/i.exec(x)))
+    return { mode: "deep", text: "Give me a thorough, expert answer about: " + m[1].trim() };
+  if ((m = /^(?:please |jarvis )?(?:search|research|look up|find out|explain|tell me|teach me)(?: about| on| for| how| why| what| who)? ?(.{3,}?) (?:deeply|in depth|in detail|thoroughly|in-depth)$/i.exec(x)) || (m = /^(?:please |jarvis )?(?:search|look)(?: deeply| deep| thoroughly)(?: about| on| for| up)? (.{3,})$/i.exec(x)))
+    return { mode: "deep", text: "Give me a thorough, expert answer about: " + m[1].trim() };
+  if (/\b(youtube|spotify|instagram|whatsapp|maps|play store|facebook|twitter|telegram)\b/i.test(x)) return null;
+  if ((m = /^(?:please |jarvis )?(?:search the web for|search the internet for|search online for|search google for|search for|search up|google|web search)(?: about)? (.{3,})$/i.exec(x)) || (m = /^(?:please |jarvis )?search (.{3,})$/i.exec(x)))
+    return { mode: "search", text: "Search the web and tell me about: " + m[1].trim() };
+  return null;
+}
 function quickPrompt(t) {
   const x = t.toLowerCase().replace(/[.!?,]/g, "").trim(); let m;
   if ((m = /^(?:please )?(?:tell|read|narrate|say|give)?(?: me)?(?: a| an| another| one)?( bedtime| short| long| funny| scary| moral| kids| kid| children| childrens| adventure| fairy tale)? ?(?:story|tale)(?: about (.{2,80}))?$/.exec(x)) && /story|tale/.test(x)) {
@@ -1392,7 +1438,9 @@ let lastReply = "";
 async function ask(text) {
   text = text.trim(); if (!text || busy) return;
   if (!sample) { note.textContent = "Claude is not available in this view."; return; }
-  let shown = text; if (isBrief(text)) { shown = "Daily briefing"; text = briefPrompt(); } else { const qp = quickPrompt(text); if (qp) text = qp; }
+  let shown = text, one = null;
+  if (isBrief(text)) { shown = "Daily briefing"; text = briefPrompt(); }
+  else { const qp = quickPrompt(text); if (qp) text = qp; else { const os = oneShotCmd(text); if (os) { one = os.mode; text = os.text; } } }
   const lc = (!trLang || /translat/i.test(text)) ? await Promise.resolve(localCommand(text)) : null;
   if (lc) { msg.value = ""; try { speechSynthesis.cancel(); } catch (e) {} show(text, lc); lastReply = lc; setState("idle"); speak(lc); return; }
   busy = true; try { speechSynthesis.cancel(); } catch (e) {}
@@ -1414,6 +1462,7 @@ async function ask(text) {
   const live = makeLive();
   const slowT = setTimeout(() => { if (busy && !note.textContent) note.textContent = "Still thinking... slow connection."; }, 7000);
   try {
+    oneShot = one;
     const r = await sample(input, { image: imgNow, cache: false, signal: ctrl.signal, modelTier: "quick", onText: ({ text: t }) => { out.textContent = visible(t) || "…"; if (live) live.feed(t, false); } });
     const act = extractAll((r.text || "").trim() || "I have nothing to add.");
     const got0 = extractEvent(act.clean), got1 = extractCall(got0.clean), got1b = extractOpen(got1.clean), got = { clean: got1b.clean, ev: got0.ev }; const reply = got.clean; lastEvent = got.ev || act.alarmEv; lastCall = got1.call;
@@ -1427,7 +1476,7 @@ async function ask(text) {
   } catch (e) {
     if (live) live.cancel(); history.pop(); setState("idle"); note.textContent = String((e && e.message) || "").slice(0, 200);
     out.textContent = e?.code === "not_granted" ? "Permission to use Claude was declined." : (e?.code === "rate_limited" || e?.code === "timeout" || e?.code === "no_key" || e?.code === "empty") ? (e.message || "Try again in a moment.") : "That did not go through. Try again."; note.textContent = String((e && e.message) || e).slice(0, 200);
-  } finally { clearTimeout(slowT); busy = false; ctrl = null; }
+  } finally { oneShot = null; clearTimeout(slowT); busy = false; ctrl = null; }
 }
 $("form").addEventListener("submit", (e) => { e.preventDefault(); clearTimeout(autoT); ask(msg.value); });
 /* Keyboard voice typing inserts whole phrases at once and never presses Send. Send it for the user after a short pause. */
