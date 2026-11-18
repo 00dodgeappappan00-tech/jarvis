@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 37 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 38 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -647,11 +647,12 @@ async function callGemini(prompt, signal, img) {
   const needSearch = !trLang && (bm === "deep" || webAlways() || NEEDSEARCH.test(lastUser) || (bm === "smart" && FACTQ.test(lastUser)));
   const _unused = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live/i.test(lastUser);
   const models = (bm === "deep" || bm === "smart" || needSearch)
-    ? [...new Set([proM, model, "models/gemini-flash-latest", "models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite"].filter(Boolean))]
+    ? [...new Set([proM, model, "models/gemini-2.5-flash", "models/gemini-flash-latest", "models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite"].filter(Boolean))]
     : [...new Set(["models/gemini-flash-lite-latest", "models/gemini-2.5-flash-lite", model, "models/gemini-flash-latest"])];
   const retryable = (c) => [500, 502, 503, 504].includes(c);
   const textOf = (jj) => ((jj.candidates && jj.candidates[0] && jj.candidates[0].content && jj.candidates[0].content.parts) || []).map((x) => x.text || "").join("").trim();
   let r = null, lastErr = null, emptyWhy = "";
+  for (let round = 0; round < 2; round++) {
   for (let mi = 0; mi < models.length; mi++) {
     const m = models[mi];
     if (mi > 0 && Date.now() - t0 > 60000) break;
@@ -672,10 +673,13 @@ async function callGemini(prompt, signal, img) {
       const jj = await r.clone().json().catch(() => ({}));
       lastErr = jj;
       if (r.status === 599) break;
-      if (r.status === 400 || r.status === 429) continue;   // try again without Google Search, which has its own small free limit
+      if (r.status === 400 || r.status === 429 || retryable(r.status)) continue;   // try again without Google Search, which has its own small free limit
       break;
     }
     if (!r.ok && ![404, 429, 500, 502, 503, 504, 599].includes(r.status)) break;   // key problem etc: do not hammer other models
+  }
+    if (!r || r.ok || ![500, 502, 503, 504].includes(r.status) || Date.now() - t0 > 50000) break;
+    note.textContent = "Google is busy, trying again..."; await wait(2500);
   }
   if (r && r.ok) throw coded("empty", "Gemini could not answer that (" + emptyWhy + "). Try asking it a different way.");
   const j = lastErr || {};
