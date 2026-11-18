@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 35 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 36 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -592,11 +592,13 @@ async function streamGemini(prompt, signal, onText, img) {
   const need = !trLang && (bm === "deep" || webAlways() || NEEDSEARCH.test(lu) || (bm === "smart" && FACTQ.test(lu)));
   let model = bm === "fast" ? (need ? await gemModel(key) : "models/gemini-flash-lite-latest") : await gemModel(key);
   if (bm === "deep" && !trLang) model = (await gemPro(key)) || model;
-  const TO = bm === "deep" ? 45000 : 15000;
+  const isPro = /-pro$/.test(model), TO = bm === "deep" ? (isPro ? 25000 : 40000) : 15000, markPro = () => { if (isPro) ls.set("proFail", String(Date.now())); };
   const body = { contents: [{ role: "user", parts: [{ text: gemPrompt(prompt) }].concat(img ? [{ inline_data: { mime_type: "image/jpeg", data: img } }] : []) }], generationConfig: { maxOutputTokens: bm === "deep" ? 8000 : 3000 } };
   if (need) body.tools = [{ google_search: {} }];
-  const r = await tfetch(GBASE + "/" + model + ":streamGenerateContent?alt=sse", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(body), signal }, TO);
-  if (!r.ok || !r.body) { if (r.status === 429 && /-pro$/.test(model)) ls.set("proFail", String(Date.now())); throw coded("stream_fail", "stream " + r.status); }
+  let r;
+  try { r = await tfetch(GBASE + "/" + model + ":streamGenerateContent?alt=sse", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(body), signal }, TO); }
+  catch (e) { if (!(signal && signal.aborted)) markPro(); throw e; }
+  if (!r.ok || !r.body) { markPro(); throw coded("stream_fail", "stream " + r.status); }
   const rd = r.body.getReader(), dec = new TextDecoder();
   let buf = "", full = "";
   const stall = () => new Promise((_, no) => setTimeout(() => no(coded("stream_fail", "stalled")), TO));
@@ -618,15 +620,16 @@ async function streamGemini(prompt, signal, onText, img) {
   } catch (e) {
     if (signal && signal.aborted) throw e;
     if (full.trim()) return full.trim();
+    markPro();
     throw e;
   }
-  if (!full.trim()) throw coded("stream_fail", "empty stream");
+  if (!full.trim()) { markPro(); throw coded("stream_fail", "empty stream"); }
   return full.trim();
 }
 async function callGemini(prompt, signal, img) {
   const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
   const p = gemPrompt(prompt);
-  const bm = brain(), TO = bm === "deep" ? 45000 : 15000;
+  const bm = brain(), TO = bm === "deep" ? 40000 : 15000;
   const body = { contents: [{ role: "user", parts: [{ text: p }].concat(img ? [{ inline_data: { mime_type: "image/jpeg", data: img } }] : []) }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: bm === "deep" ? 8000 : 3000 } };
   let model = await gemModel(key);
   const proM = bm === "deep" && !trLang ? await gemPro(key) : null;
@@ -649,12 +652,12 @@ async function callGemini(prompt, signal, img) {
   let r = null, lastErr = null, emptyWhy = "";
   for (let mi = 0; mi < models.length; mi++) {
     const m = models[mi];
-    if (mi > 0 && Date.now() - t0 > 30000) break;
+    if (mi > 0 && Date.now() - t0 > 60000) break;
     if (mi > 0) note.textContent = "Trying another model...";
     for (const useTools of needSearch ? [true, false] : [false]) {
       const b = useTools ? body : { contents: body.contents, generationConfig: body.generationConfig };
       r = await post(m, b);
-      if (r.status === 429 && m === proM) ls.set("proFail", String(Date.now()));
+      if (m === proM && !r.ok) ls.set("proFail", String(Date.now()));
       if (retryable(r.status)) { note.textContent = "Server busy, trying again..."; await wait(1200); r = await post(m, b); }
       if (r.ok) {
         const jj = await r.json().catch(() => ({})), txt = textOf(jj);
