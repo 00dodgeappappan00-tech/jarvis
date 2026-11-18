@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 36 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Jarvis</title><!-- build 37 --><link rel="manifest" href="manifest.json"><link rel="icon" type="image/png" href="icon-512.png"><link rel="apple-touch-icon" href="icon-512.png"><meta name="theme-color" content="#050b14">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one-screen console. Orb fills the upper field, last exchange reads beneath it, command bar docks at the bottom. Single dark look by design. */
@@ -163,6 +163,7 @@ button.mic[aria-pressed="true"] { background: #5ee08a; color: #08180e; }
   </div>
   <button type="button" class="linkbtn" id="trOff">Turn translator off</button>
 </div>
+<div class="tune" id="placesP" hidden></div>
 <div class="tune" id="listP" hidden>
   <div class="hint">To-do list. Tap Tick when an item is done. You can also say "add milk to my list".</div>
   <form id="todoForm" style="display:flex;gap:8px"><input id="todoIn" placeholder="Add an item" style="flex:1;min-width:0;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit"><button type="submit" class="go">Add</button></form>
@@ -576,15 +577,16 @@ async function gemPro(key) {
   } catch (e) {}
   return null;
 }
+const OWNNOTE = "\n\nLOCAL BUSINESSES: If asked about a specific shop, restaurant or its owner, search Google for it and give what the sources say (address, rating, menu, contact). Name an owner only if a reliable source states it. If none does, say the owner is not publicly listed. Never invent names or phone numbers.";
 function gemPrompt(prompt) {
-  const bm = brain(), note = bm === "deep" ? DEEPNOTE : bm === "smart" ? SMARTNOTE : "";
+  const bm = brain(), note = (bm === "deep" ? DEEPNOTE : bm === "smart" ? SMARTNOTE : "") + OWNNOTE;
   const base = prompt
     .replace("say it may be out of date, and say you cannot check live information from this page", "search the web and answer with the current facts")
     .replace(/\n\nReference data saved in this page[\s\S]*?(?=\n\nConversation so far)/, "\n\nYou can search Google for current information. Use it for news, prices, weather, scores and anything recent, and answer with the current facts in plain spoken sentences.");
   return note ? base.replace("\n\nConversation so far", note + "\n\nConversation so far") : base;
 }
 const lastUserOf = (prompt) => ((prompt.match(/User: ([^\n]*)(?:\n|$)(?![\s\S]*User: )/) || [])[1] || "");
-const NEEDSEARCH = /today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live|who\b|whom|president|prime minister|minister|chief minister|\bceo\b|launch|new\b|update|version|winner|champion|trending|iphone|samsung|pixel|\bipl\b|world cup|election|covid|movie|film|season|episode|song|album|anyone|latest|newest|best\b|top \d|vs\b|compare|review|dollar|rupee|euro|dirham|exchange|conversion/i;
+const NEEDSEARCH = /owner|founder|proprietor|today|tonight|tomorrow|now\b|current|latest|recent|news|price|rate|cost|how much|weather|temperature|score|match|result|schedule|near|nearby|nearest|open\b|closing|who is|who won|when is|stock|gold|silver|petrol|diesel|release|showroom|restaurant|shop|hotel|flight|train|bus|2026|2027|live|who\b|whom|president|prime minister|minister|chief minister|\bceo\b|launch|new\b|update|version|winner|champion|trending|iphone|samsung|pixel|\bipl\b|world cup|election|covid|movie|film|season|episode|song|album|anyone|latest|newest|best\b|top \d|vs\b|compare|review|dollar|rupee|euro|dirham|exchange|conversion/i;
 /* Streaming: words arrive as Gemini writes them. Any problem before text arrives falls back to the normal call. */
 async function streamGemini(prompt, signal, onText, img) {
   const key = ls.get("gKey", ""); if (!key) throw coded("no_key", "Add your Gemini key in Settings.");
@@ -1209,8 +1211,97 @@ function calc(t) {
   if (!/^[\d\s+\-*/().%]+$/.test(e) || !/\d/.test(e) || !/[+\-*/%]/.test(e) || e.length > 70) return null;
   try { const v = Function('"use strict";return (' + e + ")")(); if (typeof v !== "number" || !isFinite(v)) return null; return "It is " + (Math.round(v * 1e6) / 1e6).toLocaleString("en-IN") + "."; } catch (err) { return null; }
 }
+/* Nearby places: real shops and restaurants from OpenStreetMap around the phone's location */
+const PK = (re, label, f) => [re, label, f];
+const PLACE_KINDS = [
+  PK(/\b(?:restaurants?|food|eat|eating|dhaba|biryani|fast food|messes?)\b/, "restaurants", ['[amenity~"^(restaurant|fast_food|food_court)$"]']),
+  PK(/\b(?:cafes?|coffee|tea shops?|tea stalls?)\b/, "cafes", ['[amenity=cafe]']),
+  PK(/\b(?:bakery|bakeries)\b/, "bakeries", ['[shop=bakery]']),
+  PK(/\b(?:sweet shops?|sweets)\b/, "sweet shops", ['[shop~"^(confectionery|pastry)$"]']),
+  PK(/\b(?:pharmacy|pharmacies|medical shops?|medical stores?|chemists?|medicine shops?)\b/, "pharmacies", ['[amenity=pharmacy]']),
+  PK(/\b(?:hospitals?|clinics?|doctors?)\b/, "hospitals and clinics", ['[amenity~"^(hospital|clinic|doctors)$"]']),
+  PK(/\b(?:petrol|petrol pumps?|petrol bunks?|petrol stations?|fuel|gas stations?|diesel)\b/, "petrol pumps", ['[amenity=fuel]']),
+  PK(/\batms?\b/, "ATMs", ['[amenity=atm]']),
+  PK(/\bbanks?\b/, "banks", ['[amenity=bank]']),
+  PK(/\b(?:supermarkets?|grocery|groceries|kirana|general stores?|provision stores?)\b/, "grocery shops", ['[shop~"^(supermarket|convenience|general|grocery)$"]']),
+  PK(/\b(?:hotels?|lodges?|guest ?houses?|hostels?)\b/, "hotels", ['[tourism~"^(hotel|guest_house|hostel|motel)$"]']),
+  PK(/\b(?:malls?|shopping centres?|shopping centers?)\b/, "malls", ['[shop=mall]']),
+  PK(/\b(?:mobile shops?|mobile stores?|phone shops?)\b/, "mobile shops", ['[shop~"^(mobile_phone|electronics)$"]']),
+  PK(/\b(?:clothes|clothing|textile|garment|cloth) ?(?:shops?|stores?|showrooms?)?\b/, "clothing shops", ['[shop~"^(clothes|boutique|fabric)$"]']),
+  PK(/\b(?:salons?|barbers?|beauty parlou?rs?|parlou?rs?)\b/, "salons", ['[shop~"^(hairdresser|beauty)$"]']),
+  PK(/\b(?:gyms?|fitness)\b/, "gyms", ['[leisure=fitness_centre]']),
+  PK(/\b(?:schools?|colleges?)\b/, "schools and colleges", ['[amenity~"^(school|college)$"]']),
+  PK(/\b(?:temples?|mosques?|churches|church)\b/, "places of worship", ['[amenity=place_of_worship]']),
+  PK(/\b(?:police stations?|police)\b/, "police stations", ['[amenity=police]']),
+  PK(/\b(?:bus stands?|bus stations?|bus stops?)\b/, "bus stands", ['[amenity=bus_station]']),
+  PK(/\b(?:railway stations?|train stations?)\b/, "railway stations", ['[railway=station]']),
+  PK(/\b(?:cinemas?|theatres?|theaters?|movie halls?)\b/, "cinemas", ['[amenity=cinema]']),
+  PK(/\b(?:parks?|gardens?)\b/, "parks", ['[leisure~"^(park|garden)$"]'])
+];
+function distM(a, b, c, d) { const R = 6371000, r = Math.PI / 180, dl = (c - a) * r, dn = (d - b) * r, h = Math.sin(dl / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(dn / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); }
+const fmtD = (m) => m < 1000 ? Math.max(10, Math.round(m / 10) * 10) + " metres" : (m / 1000).toFixed(1) + " kilometres";
+async function overpass(filters, lat, lon, R) {
+  const body = filters.map((f) => "nwr" + f + "[name](around:" + R + "," + lat.toFixed(5) + "," + lon.toFixed(5) + ");").join("");
+  const q = "[out:json][timeout:20];(" + body + ");out center tags 80;";
+  for (const u of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) {
+    try {
+      const r = await tfetch(u, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) }, 22000);
+      if (!r.ok) continue;
+      const j = await r.json(), seen = new Set(), out = [];
+      for (const e of j.elements || []) {
+        const tg = e.tags || {}, la = e.lat != null ? e.lat : e.center && e.center.lat, lo = e.lon != null ? e.lon : e.center && e.center.lon;
+        if (!tg.name || la == null || lo == null) continue;
+        const key = tg.name.toLowerCase() + "|" + la.toFixed(3) + "|" + lo.toFixed(3); if (seen.has(key)) continue; seen.add(key);
+        const ad = [tg["addr:housenumber"], tg["addr:street"], tg["addr:suburb"] || tg["addr:neighbourhood"], tg["addr:city"]].filter(Boolean).join(", ");
+        out.push({ name: tg.name, d: distM(lat, lon, la, lo), la, lo, phone: tg.phone || tg["contact:phone"] || tg["contact:mobile"] || "", hours: tg.opening_hours || "", addr: ad, web: tg.website || tg["contact:website"] || "", op: tg.operator || tg.owner || "" });
+      }
+      return out.sort((a, b) => a.d - b.d).slice(0, 8);
+    } catch (e) {}
+  }
+  return null;
+}
+function paintPlaces(label, list) {
+  const P = $("placesP"); P.innerHTML = ""; P.hidden = false;
+  const h = document.createElement("div"); h.className = "hint"; h.textContent = "Nearby " + label + " from OpenStreetMap. Owners and some details are listed only when someone added them to the map."; P.append(h);
+  for (const p of list) {
+    const d = document.createElement("div"); d.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:3px;font-size:14px";
+    const t = document.createElement("div"); t.style.fontWeight = "600"; t.textContent = p.name + " , " + fmtD(p.d); d.append(t);
+    const add = (txt) => { if (!txt) return; const e = document.createElement("div"); e.style.cssText = "font-size:12.5px;color:var(--dim)"; e.textContent = txt; d.append(e); };
+    add(p.addr); add(p.hours && "Open: " + p.hours); add(p.op && "Run by: " + p.op);
+    const row = document.createElement("div"); row.style.cssText = "display:flex;gap:12px;flex-wrap:wrap;font-size:13px";
+    if (p.phone) { const a = document.createElement("a"); a.href = "tel:" + p.phone.replace(/[^\d+]/g, ""); a.textContent = "Call " + p.phone; a.style.color = "var(--ember)"; row.append(a); }
+    const m = document.createElement("a"); m.href = "https://www.google.com/maps/search/?api=1&query=" + p.la + "," + p.lo; m.target = "_blank"; m.rel = "noopener"; m.textContent = "Map"; m.style.color = "var(--ember)"; row.append(m);
+    if (/^https?:\/\//i.test(p.web)) { const w = document.createElement("a"); w.href = p.web; w.target = "_blank"; w.rel = "noopener"; w.textContent = "Website"; w.style.color = "var(--ember)"; row.append(w); }
+    d.append(row); P.append(d);
+  }
+  const c = document.createElement("button"); c.type = "button"; c.className = "linkbtn"; c.textContent = "Close"; c.onclick = () => { P.hidden = true; }; P.append(c);
+}
+async function findPlaces(k) {
+  note.textContent = "Getting your location...";
+  const pos = await getPos();
+  if (!pos) { note.textContent = ""; return "I could not get your location. Allow location for this site in Chrome settings, then ask again."; }
+  let list = [];
+  for (const R of [2000, 5000, 12000]) {
+    note.textContent = "Searching nearby " + k[1] + "...";
+    list = await overpass(k[2], pos.latitude, pos.longitude, R);
+    if (list === null) { note.textContent = ""; return "The map service did not answer. Try again in a minute."; }
+    if (list.length >= 3) break;
+  }
+  note.textContent = "";
+  lastOpen = { app: "maps", query: k[1] + " near me" }; $("openRow").hidden = false; $("openBtn").textContent = "Open Google Maps: " + k[1];
+  if (!list.length) return "I could not find any " + k[1] + " on the map within 12 kilometres. Map data is incomplete in some places, so tap the button to search Google Maps.";
+  paintPlaces(k[1], list);
+  const top = list.slice(0, 3).map((p) => p.name + ", " + fmtD(p.d)).join(". ");
+  return "I found " + list.length + " " + k[1] + " near you. The closest are: " + top + ". Details are on the screen.";
+}
+function nearbyCmd(x) {
+  if (x.split(" ").length > 11 || !/\b(?:near me|nearby|near here|around me|around here|close by|nearest|closest|near my location|near my place)\b/.test(x) || /weather|temperature|rain|youtube|spotify|\bplay\b|owner|price|rate|cost|review|news|who is|who owns/.test(x)) return null;
+  for (const k of PLACE_KINDS) if (k[0].test(x)) return findPlaces(k);
+  return null;
+}
 function localExtra(t, x) {
   let m;
+  { const np = nearbyCmd(x); if (np) return np; }
   const c = calc(t); if (c) return c;
   const cv = convert(t); if (cv) return cv;
   const mo = localMore(t, x); if (mo) return mo;
